@@ -1,6 +1,6 @@
 dist := dist
 bin := $(shell basename $(CURDIR))
-image := deviantony/portainer-updater
+image := portainer/portainer-updater
 
 pre:
 	mkdir -pv $(dist) 
