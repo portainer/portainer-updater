@@ -2,6 +2,16 @@
 
 A tool to upgrade the Portainer software.
 
+Build:
+
+```
+# To just compile it and get the binary generated in dist/
+make build
+
+# To compile and build a Docker image:
+make image
+```
+
 ## Agent update
 
 ```
