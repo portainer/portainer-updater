@@ -1,3 +1,5 @@
+.PHONY: pre build release image clean
+
 dist := dist
 bin := $(shell basename $(CURDIR))
 image := portainer/portainer-updater
