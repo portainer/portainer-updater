@@ -15,7 +15,8 @@ import (
 
 type AgentUpdateCommand struct {
 	ContainerID string `arg:"" help:"ID or name of the agent container. e.g. portainer-agent or e9b3e57700ad" name:"container-id"`
-	Image       string `arg:"" help:"Image of the agent to upgrade to. e.g. portainer/agent:latest" name:"image" default:"portainer/agent:latest"`
+	Image       string `arg:"" help:"Image of the agent to upgrade to. e.g. portainer/agent:latest" name:"image"`
+	ScheduleId  string `arg:"" help:"Schedule ID of the agent to upgrade to. e.g. 1" name:"schedule-id"`
 }
 
 var errAgentUpdateFailure = errors.New("agent update failure")
@@ -93,6 +94,19 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 	containerConfigCopy.Image = r.Image
 	containerConfigCopy.Hostname = ""
 	containerConfigCopy.Healthcheck = nil
+	foundIndex := -1
+	for index, env := range containerConfigCopy.Env {
+		if strings.HasPrefix(env, "UPDATE_SCHEDULE_ID=") {
+			foundIndex = index
+		}
+	}
+
+	scheduleEnv := fmt.Sprintf("UPDATE_SCHEDULE_ID=%s", r.ScheduleId)
+	if foundIndex != -1 {
+		containerConfigCopy.Env[foundIndex] = scheduleEnv
+	} else {
+		containerConfigCopy.Env = append(containerConfigCopy.Env, scheduleEnv)
+	}
 
 	// We add the new agent in the same Docker container networks as the previous agent
 	// This configuration is copied to the new container configuration
