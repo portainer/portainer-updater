@@ -46,9 +46,7 @@ func main() {
 
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		logger.Fatalw("Unable to create Docker client",
-			"error", err,
-		)
+		logger.Fatalw("Unable to create Docker client", "error", err)
 	}
 
 	cmdCtx := NewCommandExecutionContext(ctx, logger, dockerCli)

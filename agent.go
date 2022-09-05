@@ -15,28 +15,32 @@ import (
 
 type AgentUpdateCommand struct {
 	ContainerID string `arg:"" help:"ID or name of the agent container. e.g. portainer-agent or e9b3e57700ad" name:"container-id"`
-	Version     string `arg:"" help:"Version of the agent to upgrade to. e.g. latest" name:"version"`
+	Image       string `arg:"" help:"Image of the agent to upgrade to. e.g. portainer/agent:latest" name:"image" default:"portainer/agent:latest"`
 }
 
 var errAgentUpdateFailure = errors.New("agent update failure")
 
 func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 	cmdCtx.logger.Infow("Starting Portainer agent upgrade process",
-		"containerName", r.ContainerID,
-		"version", r.Version,
+		"containerId", r.ContainerID,
+		"image", r.Image,
 	)
 
-	// First, we pull the new agent Docker image
-	agentDockerImage := fmt.Sprintf("portainer/agent:%s", r.Version)
-	cmdCtx.logger.Debugw("Pulling Docker image",
-		"image", agentDockerImage,
-	)
-
-	reader, err := cmdCtx.dockerCLI.ImagePull(cmdCtx.context, agentDockerImage, types.ImagePullOptions{})
+	agentContainer, err := cmdCtx.dockerCLI.ContainerInspect(cmdCtx.context, r.ContainerID)
 	if err != nil {
-		cmdCtx.logger.Errorw("Unable to pull Docker image",
+		cmdCtx.logger.Errorw("Unable to find Portainer agent container",
 			"error", err,
 		)
+		return errAgentUpdateFailure
+	}
+
+	// First, we pull the new agent Docker image
+
+	cmdCtx.logger.Debugw("Pulling Docker image", "image", r.Image)
+
+	reader, err := cmdCtx.dockerCLI.ImagePull(cmdCtx.context, r.Image, types.ImagePullOptions{})
+	if err != nil {
+		cmdCtx.logger.Errorw("Unable to pull Docker image", "error", err)
 		return errAgentUpdateFailure
 	}
 	defer reader.Close()
@@ -54,37 +58,31 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 		"containerName", r.ContainerID,
 	)
 
-	agentContainer, err := cmdCtx.dockerCLI.ContainerInspect(cmdCtx.context, r.ContainerID)
-	if err != nil {
-		cmdCtx.logger.Errorw("Unable to find Portainer agent container",
-			"error", err,
-		)
-		return errAgentUpdateFailure
-	}
-
 	// We then check if the agent is running the latest version already
 	cmdCtx.logger.Debugw("Checking whether the latest Portainer image is available",
-		"image", agentDockerImage,
+		"image", r.Image,
 		"containerImage", agentContainer.Config.Image,
 	)
 
 	// TODO: REVIEW
 	// There might be a cleaner way to check whether the agent is using the same image as the one available locally
 	// Maybe through image digest validation instead of checking the output of the docker pull command
-	if agentContainer.Config.Image == agentDockerImage && strings.Contains(imagePullOutputBuf.String(), "Image is up to date") {
+	if agentContainer.Config.Image == r.Image && strings.Contains(imagePullOutputBuf.String(), "Image is up to date") {
 		cmdCtx.logger.Infow("Portainer agent already using the latest version of the image",
 			"containerName", r.ContainerID,
-			"image", agentDockerImage,
+			"image", r.Image,
 		)
 
 		return nil
 	}
 
+	oldContainerName := strings.TrimPrefix(agentContainer.Name, "/")
+
 	// We create the new agent container
-	updatedAgentContainerName := buildAgentContainerName(strings.TrimPrefix(agentContainer.Name, "/"))
+	updatedAgentContainerName := buildAgentContainerName(oldContainerName)
 	cmdCtx.logger.Debugw("Creating new Portainer agent container",
 		"containerName", updatedAgentContainerName,
-		"image", agentDockerImage,
+		"image", r.Image,
 	)
 
 	// We copy the original Portainer agent configuration and apply a few changes:
@@ -92,7 +90,7 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 	// * we strip the hostname from the original configuration to avoid networking issues with the internal Docker DNS
 	// * we remove the original agent container healthcheck as we should use the one embedded in the target version image
 	containerConfigCopy := agentContainer.Config
-	containerConfigCopy.Image = agentDockerImage
+	containerConfigCopy.Image = r.Image
 	containerConfigCopy.Hostname = ""
 	containerConfigCopy.Healthcheck = nil
 
@@ -135,7 +133,7 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 				"network", networkName,
 				"error", err,
 			)
-			return cleanupContainerAndError(cmdCtx, newAgentContainerID)
+			return cleanupContainerAndError(cmdCtx, r.ContainerID, newAgentContainerID)
 		}
 	}
 
@@ -145,12 +143,18 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 		"containerID", newAgentContainerID,
 	)
 
+	err = cmdCtx.dockerCLI.ContainerStop(cmdCtx.context, r.ContainerID, nil)
+	if err != nil {
+		cmdCtx.logger.Errorw("Unable to stop old Portainer agent container", "error", err)
+		return cleanupContainerAndError(cmdCtx, r.ContainerID, newAgentContainerID)
+	}
+
 	err = cmdCtx.dockerCLI.ContainerStart(cmdCtx.context, newAgentContainerID, types.ContainerStartOptions{})
 	if err != nil {
 		cmdCtx.logger.Errorw("Unable to start new Portainer agent container",
 			"error", err,
 		)
-		return cleanupContainerAndError(cmdCtx, newAgentContainerID)
+		return cleanupContainerAndError(cmdCtx, r.ContainerID, newAgentContainerID)
 	}
 
 	// We then wait for the new agent to be ready and monitor its health
@@ -162,7 +166,7 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 		cmdCtx.logger.Errorw("Unable to inspect new Portainer agent container",
 			"error", err,
 		)
-		return cleanupContainerAndError(cmdCtx, newAgentContainerID)
+		return cleanupContainerAndError(cmdCtx, r.ContainerID, newAgentContainerID)
 	}
 
 	if newCntr.State.Health != nil {
@@ -176,7 +180,7 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 				"status", newCntr.State.Health.Status,
 				"logs", newCntr.State.Health.Log,
 			)
-			return cleanupContainerAndError(cmdCtx, newAgentContainerID)
+			return cleanupContainerAndError(cmdCtx, r.ContainerID, newAgentContainerID)
 		}
 
 		cmdCtx.logger.Info("New Portainer agent container is healthy. The old Portainer agent container will be removed.")
@@ -190,28 +194,42 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 		"containerID", agentContainer.ID,
 	)
 
+	// remove old container
 	err = cmdCtx.dockerCLI.ContainerRemove(cmdCtx.context, agentContainer.ID, types.ContainerRemoveOptions{Force: true})
 	if err != nil {
-		cmdCtx.logger.Errorw("Unable to remove old Portainer agent container",
-			"error", err,
-		)
-		return cleanupContainerAndError(cmdCtx, newAgentContainerID)
+		cmdCtx.logger.Warnw("Unable to remove old Portainer agent container", "error", err)
+		// I think we shouldn't clean here. The new container is already running, so we should let the user decide what to do.
+		return nil
+	}
+
+	// rename new container to old container name
+	err = cmdCtx.dockerCLI.ContainerRename(cmdCtx.context, newAgentContainerID, oldContainerName)
+	if err != nil {
+		cmdCtx.logger.Errorw("Unable to rename new Portainer agent container", "error", err)
+		return nil
 	}
 
 	cmdCtx.logger.Infow("Portainer agent upgrade process completed",
-		"containerName", updatedAgentContainerName,
-		"image", agentDockerImage,
+		"containerName", oldContainerName,
+		"containerID", newAgentContainerID,
+		"image", r.Image,
 	)
 
 	return nil
 }
 
-func cleanupContainerAndError(cmdCtx *CommandExecutionContext, containerID string) error {
-	cmdCtx.logger.Debugw("An error occured during the upgrade process - removing newly created Portainer agent container",
-		"containerID", containerID,
+func cleanupContainerAndError(cmdCtx *CommandExecutionContext, oldContainerId, newContainerID string) error {
+	cmdCtx.logger.Debugw("An error occurred during the upgrade process - removing newly created Portainer agent container",
+		"containerID", newContainerID,
 	)
 
-	err := cmdCtx.dockerCLI.ContainerRemove(cmdCtx.context, containerID, types.ContainerRemoveOptions{Force: true})
+	// should restart old container
+	err := cmdCtx.dockerCLI.ContainerStart(cmdCtx.context, oldContainerId, types.ContainerStartOptions{})
+	if err != nil {
+		cmdCtx.logger.Errorw("Unable to restart old Portainer agent container", "error", err)
+	}
+
+	err = cmdCtx.dockerCLI.ContainerRemove(cmdCtx.context, newContainerID, types.ContainerRemoveOptions{Force: true})
 	if err != nil {
 		cmdCtx.logger.Errorw("Unable to remove new Portainer agent container",
 			"error", err,
