@@ -36,28 +36,11 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 	}
 
 	// First, we pull the new agent Docker image
-
-	cmdCtx.logger.Debugw("Pulling Docker image", "image", r.Image)
-
-	reader, err := cmdCtx.dockerCLI.ImagePull(cmdCtx.context, r.Image, types.ImagePullOptions{})
+	imageUpToDate, err := r.pullImage(cmdCtx)
 	if err != nil {
-		cmdCtx.logger.Errorw("Unable to pull Docker image", "error", err)
+		cmdCtx.logger.Errorw("Unable to pull image", "error", err)
 		return errAgentUpdateFailure
 	}
-	defer reader.Close()
-
-	// We have to read the output of the ImagePull command - otherwise it will be done asynchronously
-	// This is not really well documented on the Docker SDK
-	var imagePullOutputBuf bytes.Buffer
-	tee := io.TeeReader(reader, &imagePullOutputBuf)
-
-	io.Copy(os.Stdout, tee)
-	io.Copy(&imagePullOutputBuf, reader)
-
-	// We look for the existing agent container to copy its configuration
-	cmdCtx.logger.Debugw("Looking for Portainer agent container",
-		"containerName", r.ContainerID,
-	)
 
 	// We then check if the agent is running the latest version already
 	cmdCtx.logger.Debugw("Checking whether the latest Portainer image is available",
@@ -65,10 +48,10 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 		"containerImage", agentContainer.Config.Image,
 	)
 
-	// TODO: REVIEW
-	// There might be a cleaner way to check whether the agent is using the same image as the one available locally
-	// Maybe through image digest validation instead of checking the output of the docker pull command
-	if agentContainer.Config.Image == r.Image && strings.Contains(imagePullOutputBuf.String(), "Image is up to date") {
+	// // TODO: REVIEW
+	// // There might be a cleaner way to check whether the agent is using the same image as the one available locally
+	// // Maybe through image digest validation instead of checking the output of the docker pull command
+	if agentContainer.Config.Image == r.Image && imageUpToDate {
 		cmdCtx.logger.Infow("Portainer agent already using the latest version of the image",
 			"containerName", r.ContainerID,
 			"image", r.Image,
@@ -259,4 +242,32 @@ func buildAgentContainerName(containerName string) string {
 	}
 
 	return fmt.Sprintf("%s-update", containerName)
+}
+
+func (r *AgentUpdateCommand) pullImage(cmdCtx *CommandExecutionContext) (bool, error) {
+
+	cmdCtx.logger.Debugw("Pulling Docker image", "image", r.Image)
+
+	reader, err := cmdCtx.dockerCLI.ImagePull(cmdCtx.context, r.Image, types.ImagePullOptions{})
+	if err != nil {
+		cmdCtx.logger.Errorw("Unable to pull Docker image", "error", err)
+		return false, errAgentUpdateFailure
+	}
+	defer reader.Close()
+
+	// We have to read the output of the ImagePull command - otherwise it will be done asynchronously
+	// This is not really well documented on the Docker SDK
+	var imagePullOutputBuf bytes.Buffer
+	tee := io.TeeReader(reader, &imagePullOutputBuf)
+
+	io.Copy(os.Stdout, tee)
+	io.Copy(&imagePullOutputBuf, reader)
+
+	// We look for the existing agent container to copy its configuration
+	cmdCtx.logger.Debugw("Looking for Portainer agent container",
+		"containerName", r.ContainerID,
+	)
+
+	return strings.Contains(imagePullOutputBuf.String(), "Image is up to date"), nil
+
 }
