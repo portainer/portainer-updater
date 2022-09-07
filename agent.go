@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,7 +11,9 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
 )
 
 type AgentUpdateCommand struct {
@@ -27,6 +30,8 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 		"image", r.Image,
 	)
 
+	// We look for the existing agent container to copy its configuration
+	cmdCtx.logger.Debugw("Looking for Portainer agent container", "containerName", r.ContainerID)
 	agentContainer, err := cmdCtx.dockerCLI.ContainerInspect(cmdCtx.context, r.ContainerID)
 	if err != nil {
 		cmdCtx.logger.Errorw("Unable to find Portainer agent container",
@@ -69,49 +74,17 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 		"image", r.Image,
 	)
 
-	// We copy the original Portainer agent configuration and apply a few changes:
-	// * we replace the image name
-	// * we strip the hostname from the original configuration to avoid networking issues with the internal Docker DNS
-	// * we remove the original agent container healthcheck as we should use the one embedded in the target version image
-	containerConfigCopy := agentContainer.Config
-	containerConfigCopy.Image = r.Image
-	containerConfigCopy.Hostname = ""
-	containerConfigCopy.Healthcheck = nil
-	foundIndex := -1
-	for index, env := range containerConfigCopy.Env {
-		if strings.HasPrefix(env, "UPDATE_SCHEDULE_ID=") {
-			foundIndex = index
-		}
-	}
-
-	scheduleEnv := fmt.Sprintf("UPDATE_SCHEDULE_ID=%s", r.ScheduleId)
-	if foundIndex != -1 {
-		containerConfigCopy.Env[foundIndex] = scheduleEnv
-	} else {
-		containerConfigCopy.Env = append(containerConfigCopy.Env, scheduleEnv)
-	}
-
-	// We add the new agent in the same Docker container networks as the previous agent
-	// This configuration is copied to the new container configuration
-	containerEndpointsConfig := make(map[string]*network.EndpointSettings)
-	networks := make([]string, 0)
-
-	for networkName := range agentContainer.NetworkSettings.Networks {
-		networks = append(networks, networkName)
-		containerEndpointsConfig[networkName] = &network.EndpointSettings{}
-	}
+	containerConfigCopy, networks, networkConfig := r.copyContainerConfig(agentContainer.Config, agentContainer.NetworkSettings.Networks)
 
 	newAgentContainer, err := cmdCtx.dockerCLI.ContainerCreate(cmdCtx.context,
 		containerConfigCopy,
 		agentContainer.HostConfig,
-		&network.NetworkingConfig{
-			EndpointsConfig: containerEndpointsConfig,
-		}, nil, updatedAgentContainerName,
+		networkConfig,
+		nil,
+		updatedAgentContainerName,
 	)
 	if err != nil {
-		cmdCtx.logger.Errorw("Unable to create new Portainer agent container",
-			"error", err,
-		)
+		cmdCtx.logger.Errorw("Unable to create new Portainer agent container", "error", err)
 		return errAgentUpdateFailure
 	}
 
@@ -122,16 +95,10 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 		"networks", networks,
 		"containerID", newAgentContainerID,
 	)
-
-	for _, networkName := range networks {
-		err := cmdCtx.dockerCLI.NetworkConnect(cmdCtx.context, networkName, newAgentContainerID, nil)
-		if err != nil {
-			cmdCtx.logger.Errorw("Unable to join Portainer agent container to network",
-				"network", networkName,
-				"error", err,
-			)
-			return cleanupContainerAndError(cmdCtx, r.ContainerID, newAgentContainerID)
-		}
+	err = r.applyNetworks(cmdCtx.context, cmdCtx.dockerCLI, newAgentContainerID, networks)
+	if err != nil {
+		cmdCtx.logger.Errorw("Unable to join Portainer agent container to network", "error", err)
+		return cleanupContainerAndError(cmdCtx, r.ContainerID, newAgentContainerID)
 	}
 
 	// We then start the new agent container
@@ -263,11 +230,53 @@ func (r *AgentUpdateCommand) pullImage(cmdCtx *CommandExecutionContext) (bool, e
 	io.Copy(os.Stdout, tee)
 	io.Copy(&imagePullOutputBuf, reader)
 
-	// We look for the existing agent container to copy its configuration
-	cmdCtx.logger.Debugw("Looking for Portainer agent container",
-		"containerName", r.ContainerID,
-	)
-
 	return strings.Contains(imagePullOutputBuf.String(), "Image is up to date"), nil
+}
 
+func (r *AgentUpdateCommand) copyContainerConfig(config *container.Config, containerNetworks map[string]*network.EndpointSettings) (newConfig *container.Config, networks []string, networkConfig *network.NetworkingConfig) {
+	// We copy the original Portainer agent configuration and apply a few changes:
+	// * we replace the image name
+	// * we strip the hostname from the original configuration to avoid networking issues with the internal Docker DNS
+	// * we remove the original agent container healthcheck as we should use the one embedded in the target version image
+	containerConfigCopy := config
+	containerConfigCopy.Image = r.Image
+	containerConfigCopy.Hostname = ""
+	containerConfigCopy.Healthcheck = nil
+	foundIndex := -1
+	for index, env := range containerConfigCopy.Env {
+		if strings.HasPrefix(env, "UPDATE_SCHEDULE_ID=") {
+			foundIndex = index
+		}
+	}
+
+	scheduleEnv := fmt.Sprintf("UPDATE_SCHEDULE_ID=%s", r.ScheduleId)
+	if foundIndex != -1 {
+		containerConfigCopy.Env[foundIndex] = scheduleEnv
+	} else {
+		containerConfigCopy.Env = append(containerConfigCopy.Env, scheduleEnv)
+	}
+
+	// We add the new agent in the same Docker container networks as the previous agent
+	// This configuration is copied to the new container configuration
+	containerEndpointsConfig := make(map[string]*network.EndpointSettings)
+
+	for networkName := range containerNetworks {
+		networks = append(networks, networkName)
+		containerEndpointsConfig[networkName] = &network.EndpointSettings{}
+	}
+
+	return containerConfigCopy, networks, &network.NetworkingConfig{
+		EndpointsConfig: containerEndpointsConfig,
+	}
+}
+
+func (r *AgentUpdateCommand) applyNetworks(context context.Context, dockerCLI *client.Client, containerID string, networks []string) error {
+	for _, networkName := range networks {
+		err := dockerCLI.NetworkConnect(context, networkName, containerID, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
