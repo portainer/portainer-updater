@@ -41,10 +41,13 @@ func (r *AgentUpdateCommand) Run(cmdCtx *CommandExecutionContext) error {
 	}
 
 	// First, we pull the new agent Docker image
-	imageUpToDate, err := r.pullImage(cmdCtx)
-	if err != nil {
-		cmdCtx.logger.Errorw("Unable to pull image", "error", err)
-		return errAgentUpdateFailure
+	imageUpToDate := false
+	if os.Getenv("SKIP_PULL") != "" {
+		imageUpToDate, err = r.pullImage(cmdCtx)
+		if err != nil {
+			cmdCtx.logger.Errorw("Unable to pull image", "error", err)
+			return errAgentUpdateFailure
+		}
 	}
 
 	// We then check if the agent is running the latest version already
