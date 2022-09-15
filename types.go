@@ -24,5 +24,6 @@ func NewCommandExecutionContext(ctx context.Context, logger *zap.SugaredLogger, 
 var cli struct {
 	Debug bool `help:"Enable debug mode."`
 
-	AgentUpdate AgentUpdateCommand `cmd:"" help:"Update an existing Portainer agent container."`
+	AgentUpdate   AgentUpdateCommand   `cmd:"" help:"Update an existing Portainer agent container."`
+	FindContainer FindContainerCommand `cmd:"" help:"Find an edge agent container"`
 }
