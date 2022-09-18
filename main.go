@@ -1,11 +1,13 @@
 package main
 
 import (
-	"context"
+	gocontext "context"
 	"log"
 
 	"github.com/alecthomas/kong"
 	"github.com/docker/docker/client"
+	"github.com/portainer/portainer-updater/cli"
+	"github.com/portainer/portainer-updater/context"
 	"go.uber.org/zap"
 )
 
@@ -28,9 +30,9 @@ func initializeLogger(debug bool) (*zap.SugaredLogger, error) {
 }
 
 func main() {
-	ctx := context.Background()
+	ctx := gocontext.Background()
 
-	cliCtx := kong.Parse(&cli,
+	cliCtx := kong.Parse(&cli.CLI,
 		kong.Name("portainer-updater"),
 		kong.Description("A tool to update Portainer software"),
 		kong.UsageOnError(),
@@ -39,7 +41,7 @@ func main() {
 			Summary: true,
 		}))
 
-	logger, err := initializeLogger(cli.Debug)
+	logger, err := initializeLogger(cli.CLI.Debug)
 	if err != nil {
 		log.Fatalf("Unable to initialize logger: %s", err)
 	}
@@ -49,7 +51,7 @@ func main() {
 		logger.Fatalw("Unable to create Docker client", "error", err)
 	}
 
-	cmdCtx := NewCommandExecutionContext(ctx, logger, dockerCli)
+	cmdCtx := context.NewCommandExecutionContext(ctx, logger, dockerCli)
 	err = cliCtx.Run(cmdCtx)
 	cliCtx.FatalIfErrorf(err)
 }
