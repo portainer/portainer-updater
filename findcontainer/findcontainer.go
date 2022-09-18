@@ -1,4 +1,4 @@
-package main
+package findcontainer
 
 import (
 	"context"
@@ -10,14 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-type FindContainerCommand struct {
-}
-
-func (r *FindContainerCommand) Run(cmdCtx *CommandExecutionContext) error {
-	dockerCli := cmdCtx.dockerCLI
-
-	ctx := context.TODO()
-
+func FindContainer(ctx context.Context, dockerCli *client.Client) (string, error) {
 	searchFunc := []func(context.Context, *client.Client) (*types.Container, error){
 		findByLabel,
 		findByImage,
@@ -27,16 +20,15 @@ func (r *FindContainerCommand) Run(cmdCtx *CommandExecutionContext) error {
 	for _, f := range searchFunc {
 		container, err := f(ctx, dockerCli)
 		if err != nil {
-			return err
+			return "", errors.WithMessage(err, "failed finding container")
 		}
 
 		if container != nil {
-			cmdCtx.logger.Infow("Found container", "container", container)
-			return nil
+			return container.ID, nil
 		}
 	}
 
-	return errors.New("Unable to find container")
+	return "", errors.New("Unable to find container")
 }
 
 func findByLabel(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
