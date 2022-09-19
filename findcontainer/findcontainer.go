@@ -2,6 +2,7 @@ package findcontainer
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"github.com/docker/docker/api/types"
@@ -10,25 +11,33 @@ import (
 	"github.com/pkg/errors"
 )
 
+type queryFn = func(context.Context, *client.Client) (*types.Container, error)
+
+type findContainerQuery struct {
+	fn   queryFn
+	name string
+}
+
 func FindContainer(ctx context.Context, dockerCli *client.Client) (string, error) {
-	searchFunc := []func(context.Context, *client.Client) (*types.Container, error){
-		findByLabel,
-		findByImage,
-		findByLogs,
+	queries := []findContainerQuery{
+		{findByLabel, "findByLabel"},
+		{findByImage, "findByImage"},
+		{findByLogs, "findByLogs"},
 	}
 
-	for _, f := range searchFunc {
-		container, err := f(ctx, dockerCli)
+	for _, query := range queries {
+		container, err := query.fn(ctx, dockerCli)
 		if err != nil {
-			return "", errors.WithMessage(err, "failed finding container")
+			return "", errors.WithMessagef(err, "failed finding container %s", query.name)
 		}
 
 		if container != nil {
+			log.Printf("Found container %s: %s", query.name, container.ID)
 			return container.ID, nil
 		}
 	}
 
-	return "", errors.New("Unable to find container")
+	return "", errors.New("unable to find container")
 }
 
 func findByLabel(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
@@ -40,7 +49,7 @@ func findByLabel(ctx context.Context, dockerCli *client.Client) (*types.Containe
 		Filters: filters,
 	})
 	if err != nil {
-		return nil, errors.WithMessage(err, "Unable to list containers")
+		return nil, errors.WithMessage(err, "unable to list containers")
 	}
 
 	if len(containers) == 0 {
@@ -48,7 +57,7 @@ func findByLabel(ctx context.Context, dockerCli *client.Client) (*types.Containe
 	}
 
 	if len(containers) > 1 {
-		return nil, errors.New("Multiple containers found")
+		return nil, errors.New("multiple containers found")
 	}
 
 	return &containers[0], nil
@@ -64,16 +73,16 @@ func findByImage(ctx context.Context, dockerCli *client.Client) (*types.Containe
 		Filters: filters,
 	})
 	if err != nil {
-		return nil, errors.WithMessage(err, "Unable to list containers")
+		return nil, errors.WithMessage(err, "unable to list containers")
 	}
 
 	for _, container := range containers {
-		if strings.HasPrefix(container.Image, "portainer/agent") {
+		if strings.HasPrefix(container.Image, "portainer/agent") || strings.HasPrefix(container.Image, "portainerci/agent") {
 			return &container, nil
 		}
 	}
 
-	return nil, errors.New("Unable to find container")
+	return nil, nil
 }
 
 func findByLogs(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
@@ -84,7 +93,7 @@ func findByLogs(ctx context.Context, dockerCli *client.Client) (*types.Container
 		Filters: filters,
 	})
 	if err != nil {
-		return nil, errors.WithMessage(err, "Unable to list containers")
+		return nil, errors.WithMessage(err, "unable to list containers")
 	}
 
 	for _, container := range containers {
@@ -94,7 +103,7 @@ func findByLogs(ctx context.Context, dockerCli *client.Client) (*types.Container
 			Timestamps: true,
 		})
 		if err != nil {
-			return nil, errors.WithMessage(err, "Unable to get container logs")
+			return nil, errors.WithMessage(err, "unable to get container logs")
 		}
 
 		buf := make([]byte, 1024)
@@ -110,5 +119,5 @@ func findByLogs(ctx context.Context, dockerCli *client.Client) (*types.Container
 		}
 	}
 
-	return nil, errors.New("Unable to find container")
+	return nil, nil
 }
