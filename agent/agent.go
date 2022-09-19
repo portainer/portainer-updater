@@ -3,7 +3,6 @@ package agent
 import (
 	"github.com/pkg/errors"
 	"github.com/portainer/portainer-updater/context"
-	"github.com/portainer/portainer-updater/findcontainer"
 	"github.com/portainer/portainer-updater/update"
 )
 
@@ -14,7 +13,7 @@ type AgentUpdateCommand struct {
 }
 
 func (r *AgentUpdateCommand) Run(cmdCtx *context.CommandExecutionContext) error {
-	oldContainerId, err := findcontainer.FindContainer(cmdCtx.Context, cmdCtx.DockerCLI)
+	oldContainerId, err := findContainer(cmdCtx.Context, cmdCtx.DockerCLI)
 	if err != nil {
 		return errors.WithMessage(err, "failed finding container id")
 	}

@@ -1,4 +1,4 @@
-package findcontainer
+package agent
 
 import (
 	"context"
@@ -18,7 +18,7 @@ type findContainerQuery struct {
 	name string
 }
 
-func FindContainer(ctx context.Context, dockerCli *client.Client) (string, error) {
+func findContainer(ctx context.Context, dockerCli *client.Client) (string, error) {
 	queries := []findContainerQuery{
 		{findByLabel, "findByLabel"},
 		{findByImage, "findByImage"},
