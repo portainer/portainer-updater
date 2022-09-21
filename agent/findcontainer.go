@@ -18,7 +18,7 @@ type findContainerQuery struct {
 	name string
 }
 
-func findContainer(ctx context.Context, dockerCli *client.Client) (string, error) {
+func findContainer(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
 	queries := []findContainerQuery{
 		{findByLabel, "findByLabel"},
 		{findByImage, "findByImage"},
@@ -28,16 +28,16 @@ func findContainer(ctx context.Context, dockerCli *client.Client) (string, error
 	for _, query := range queries {
 		container, err := query.fn(ctx, dockerCli)
 		if err != nil {
-			return "", errors.WithMessagef(err, "failed finding container %s", query.name)
+			return nil, errors.WithMessagef(err, "failed finding container %s", query.name)
 		}
 
 		if container != nil {
 			log.Printf("Found container %s: %s", query.name, container.ID)
-			return container.ID, nil
+			return container, nil
 		}
 	}
 
-	return "", errors.New("unable to find container")
+	return nil, errors.New("unable to find container")
 }
 
 func findByLabel(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {

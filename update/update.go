@@ -15,6 +15,9 @@ import (
 	"github.com/portainer/portainer-updater/context"
 )
 
+// UpdateScheduleIDLabel is the label used to store the update schedule ID
+const UpdateScheduleIDLabel = "io.portainer.update.scheduleId"
+
 var errAgentUpdateFailure = errors.New("agent update failure")
 
 func Update(oldContainerId string, imageName string, scheduleId string, cmdCtx *context.CommandExecutionContext) error {
@@ -180,6 +183,12 @@ func copyContainerConfig(imageName string, updateScheduleId string, config *cont
 	} else {
 		containerConfigCopy.Env = append(containerConfigCopy.Env, scheduleEnv)
 	}
+
+	if containerConfigCopy.Labels == nil {
+		containerConfigCopy.Labels = make(map[string]string)
+	}
+
+	containerConfigCopy.Labels[UpdateScheduleIDLabel] = updateScheduleId
 
 	// We add the new agent in the same Docker container networks as the previous agent
 	// This configuration is copied to the new container configuration
