@@ -12,7 +12,7 @@
       },
       "showLog": true,
 
-      "args": ["agent-update", "portainerci/agent:2.16.1", "21", "--debug"]
+      "args": ["agent-update", "portainerci/agent:2.16.1", "21"]
     }
   ]
 }
