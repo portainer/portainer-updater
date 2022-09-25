@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bufio"
 	"context"
 	"log"
 	"strings"
@@ -100,22 +101,21 @@ func findByLogs(ctx context.Context, dockerCli *client.Client) (*types.Container
 		logs, err := dockerCli.ContainerLogs(ctx, container.ID, types.ContainerLogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
-			Timestamps: true,
 		})
 		if err != nil {
 			return nil, errors.WithMessage(err, "unable to get container logs")
 		}
 
-		buf := make([]byte, 1024)
-		for {
-			n, err := logs.Read(buf)
-			if err != nil {
-				break
-			}
+		scanner := bufio.NewScanner(logs)
 
-			if strings.Contains(string(buf[:n]), "Starting Agent API server") {
+		for scanner.Scan() {
+			if strings.Contains(scanner.Text(), "Starting Agent API server") {
 				return &container, nil
 			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			return nil, errors.WithMessage(err, "unable to read container logs")
 		}
 	}
 
