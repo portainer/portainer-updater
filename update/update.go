@@ -251,20 +251,40 @@ func monitorHealth(cmdCtx *context.CommandExecutionContext, containerId string) 
 		return true, nil
 	}
 
-	// TODO: REVIEW
-	// The agent should either have a successful health check or the health check timeout would have kicked in after 15secs
-	// Might be reviewed as well accordingly to the HEALTHCHECK instruction in the agent Dockerfile
 	time.Sleep(15 * time.Second)
 
-	if container.State.Health.Status != "healthy" {
-		cmdCtx.Logger.Errorw("New Portainer agent container health check failed. Exiting without updating the agent",
+	tries := 5
+	for i := 0; i < tries; i++ {
+
+		if container.State.Health.Status == "healthy" {
+			return true, nil
+		}
+
+		if container.State.Health.Status == "unhealthy" {
+			cmdCtx.Logger.Errorw("New Portainer agent container health check failed. Exiting without updating the agent",
+				"status", container.State.Health.Status,
+				"logs", container.State.Health.Log,
+			)
+			return false, nil
+		}
+
+		cmdCtx.Logger.Debugw("New Portainer agent container health check in progress",
 			"status", container.State.Health.Status,
-			"logs", container.State.Health.Log,
 		)
-		return false, nil
+
+		time.Sleep(5 * time.Second)
+		container, err = cmdCtx.DockerCLI.ContainerInspect(cmdCtx.Context, containerId)
+		if err != nil {
+			return false, errors.WithMessage(err, "Unable to inspect new Portainer agent container")
+		}
 	}
 
-	return true, nil
+	cmdCtx.Logger.Errorw("New Portainer agent container health check timed out. Exiting without updating the agent",
+		"status", container.State.Health.Status,
+		"logs", container.State.Health.Log,
+	)
+	return false, nil
+
 }
 
 func startContainer(cmdCtx *context.CommandExecutionContext, oldContainerID, newContainerID string) error {
