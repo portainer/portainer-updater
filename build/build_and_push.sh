@@ -48,10 +48,10 @@ docker_manifest_create_and_push()
 
     image="${repo}:${tag}-${os}-${arch}"
     
-    echo docker manifest create --amend "${repo}:${tag} $image"
-    docker manifest create --amend "${repo}:${tag} $image"
-    echo docker manifest annotate "${repo}:${tag} ${image}" --os "${os}" --arch "${arch}"
-    docker manifest annotate "${repo}:${tag} ${image}" --os "${os}" --arch "${arch}"
+    echo docker manifest create --amend "${repo}:${tag}" "$image"
+    docker manifest create --amend "${repo}:${tag}" "$image"
+    echo docker manifest annotate "${repo}:${tag}" "${image}" --os "${os}" --arch "${arch}"
+    docker manifest annotate "${repo}:${tag}" "${image}" --os "${os}" --arch "${arch}"
   done  
   
   docker manifest push "${repo}:${tag}"
