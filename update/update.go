@@ -172,12 +172,12 @@ func copyContainerConfig(imageName string, updateScheduleId string, config *cont
 	containerConfigCopy.Healthcheck = nil
 	foundIndex := -1
 	for index, env := range containerConfigCopy.Env {
-		if strings.HasPrefix(env, "UPDATE_SCHEDULE_ID=") {
+		if strings.HasPrefix(env, "UPDATE_ID=") {
 			foundIndex = index
 		}
 	}
 
-	scheduleEnv := fmt.Sprintf("UPDATE_SCHEDULE_ID=%s", updateScheduleId)
+	scheduleEnv := fmt.Sprintf("UPDATE_ID=%s", updateScheduleId)
 	if foundIndex != -1 {
 		containerConfigCopy.Env[foundIndex] = scheduleEnv
 	} else {
