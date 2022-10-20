@@ -9,13 +9,31 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type EnvType string
+
+const (
+	EnvTypeDockerStandalone EnvType = "standalone"
+	EnvTypeNomad            EnvType = "nomad"
+)
+
 type AgentCommand struct {
-	EnvType    string `kong:"help='The environment type',default='standalone',enum='standalone,nomad'"`
-	Image      string `arg:"" help:"Image of the agent to upgrade to. e.g. portainer/agent:latest" name:"image" default:"portainer/agent:latest"`
-	ScheduleId string `arg:"" help:"Schedule ID of the agent to upgrade to. e.g. 1" name:"schedule-id"`
+	EnvType    EnvType `kong:"help='The environment type',default='standalone',enum='standalone,nomad'"`
+	ScheduleId string  `arg:"" help:"Schedule ID of the agent to upgrade to. e.g. 1" name:"schedule-id"`
+	Image      string  `arg:"" help:"Image of the agent to upgrade to. e.g. portainer/agent:latest" name:"image" default:"portainer/agent:latest"`
 }
 
 func (r *AgentCommand) Run() error {
+	switch r.EnvType {
+	case "standalone":
+		return r.runStandalone()
+	case "nomad":
+		// return r.runNomad()
+	}
+
+	return errors.Errorf("unknown environment type: %s", r.EnvType)
+}
+
+func (r *AgentCommand) runStandalone() error {
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Unable to initialize Docker client")
