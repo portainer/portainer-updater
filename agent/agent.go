@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"context"
+
+	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
-	"github.com/portainer/portainer-updater/context"
 	"github.com/portainer/portainer-updater/update"
 	"github.com/rs/zerolog/log"
 )
@@ -12,12 +14,19 @@ type AgentUpdateCommand struct {
 	ScheduleId string `arg:"" help:"Schedule ID of the agent to upgrade to. e.g. 1" name:"schedule-id"`
 }
 
-func (r *AgentUpdateCommand) Run(cmdCtx *context.CommandExecutionContext) error {
+func (r *AgentUpdateCommand) Run() error {
+	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Unable to initialize Docker client")
+	}
+
+	ctx := context.Background()
+
 	log.Info().
 		Str("image", r.Image).
 		Str("schedule-id", r.ScheduleId).
 		Msg("Updating Portainer agent")
-	oldContainer, err := findContainer(cmdCtx.Context, cmdCtx.DockerCLI)
+	oldContainer, err := findContainer(ctx, dockerCli)
 	if err != nil {
 		return errors.WithMessage(err, "failed finding container id")
 	}
@@ -28,5 +37,5 @@ func (r *AgentUpdateCommand) Run(cmdCtx *context.CommandExecutionContext) error 
 		return nil
 	}
 
-	return update.Update(oldContainer.ID, r.Image, r.ScheduleId, cmdCtx)
+	return update.Update(ctx, dockerCli, oldContainer.ID, r.Image, r.ScheduleId)
 }
