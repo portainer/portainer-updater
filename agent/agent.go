@@ -7,8 +7,10 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/hashicorp/nomad/api"
 	"github.com/pkg/errors"
 	"github.com/portainer/portainer-updater/dockerstandalone"
+	"github.com/portainer/portainer-updater/nomad"
 	"github.com/rs/zerolog/log"
 )
 
@@ -35,7 +37,7 @@ func (r *AgentCommand) Run() error {
 	case "standalone":
 		return r.runStandalone(ctx)
 	case "nomad":
-		// return r.runNomad()
+		return r.runNomad(ctx)
 	}
 
 	return errors.Errorf("unknown environment type: %s", r.EnvType)
@@ -83,4 +85,19 @@ func (r *AgentCommand) runStandalone(ctx context.Context) error {
 
 		config.Labels[UpdateScheduleIDLabel] = r.ScheduleId
 	})
+}
+
+func (r *AgentCommand) runNomad(ctx context.Context) error {
+
+	nomadCli, err := api.NewClient(api.DefaultConfig())
+	if err != nil {
+		return errors.WithMessage(err, "failed to initialize Nomad client")
+	}
+
+	task, err := nomad.FindAgentContainer(ctx, nomadCli)
+	if err != nil {
+		return errors.WithMessage(err, "failed finding container id")
+	}
+
+	return nomad.Update(ctx, nomadCli, task.Name, r.Image, r.ScheduleId)
 }
