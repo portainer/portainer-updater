@@ -1,4 +1,4 @@
-package agent
+package dockerstandalone
 
 import (
 	"bufio"
@@ -19,7 +19,7 @@ type findContainerQuery struct {
 	name string
 }
 
-func findContainer(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
+func FindAgentContainer(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
 	queries := []findContainerQuery{
 		{findByLabel, "findByLabel"},
 		{findByImage, "findByImage"},

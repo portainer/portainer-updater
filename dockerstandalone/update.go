@@ -1,4 +1,4 @@
-package update
+package dockerstandalone
 
 import (
 	"bytes"
@@ -304,10 +304,6 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 		}
 	}
 
-	// cmdCtx.Logger.Errorw("New Portainer agent container health check timed out. Exiting without updating the agent",
-	// 	"status", container.State.Health.Status,
-	// 	"logs", container.State.Health.Log,
-	// )
 	log.Error().
 		Str("status", container.State.Health.Status).
 		Interface("logs", container.State.Health.Log).
