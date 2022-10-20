@@ -34,6 +34,8 @@ func (r *AgentCommand) Run() error {
 	switch r.EnvType {
 	case "standalone":
 		return r.runStandalone(ctx)
+	case "nomad":
+		// return r.runNomad()
 	}
 
 	return errors.Errorf("unknown environment type: %s", r.EnvType)
