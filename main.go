@@ -2,34 +2,18 @@ package main
 
 import (
 	gocontext "context"
-	"log"
+
+	zerolog "github.com/rs/zerolog/log"
 
 	"github.com/alecthomas/kong"
 	"github.com/docker/docker/client"
 	"github.com/portainer/portainer-updater/cli"
 	"github.com/portainer/portainer-updater/context"
-	"go.uber.org/zap"
+	"github.com/portainer/portainer-updater/log"
 )
 
-func initializeLogger(debug bool) (*zap.SugaredLogger, error) {
-	if debug {
-		logger, err := zap.NewDevelopment()
-		if err != nil {
-			return nil, err
-		}
-
-		return logger.Sugar(), nil
-	}
-
-	logger, err := zap.NewProduction()
-	if err != nil {
-		return nil, err
-	}
-
-	return logger.Sugar(), nil
-}
-
 func main() {
+
 	ctx := gocontext.Background()
 
 	cliCtx := kong.Parse(&cli.CLI,
@@ -41,17 +25,15 @@ func main() {
 			Summary: true,
 		}))
 
-	logger, err := initializeLogger(cli.CLI.Debug)
-	if err != nil {
-		log.Fatalf("Unable to initialize logger: %s", err)
-	}
+	log.ConfigureLogger(cli.CLI.PrettyLog)
+	log.SetLoggingLevel(log.Level(cli.CLI.LogLevel))
 
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		logger.Fatalw("Unable to create Docker client", "error", err)
+		zerolog.Fatal().Err(err).Msg("Unable to initialize Docker client")
 	}
 
-	cmdCtx := context.NewCommandExecutionContext(ctx, logger, dockerCli)
+	cmdCtx := context.NewCommandExecutionContext(ctx, dockerCli)
 	err = cliCtx.Run(cmdCtx)
 	cliCtx.FatalIfErrorf(err)
 }

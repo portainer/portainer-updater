@@ -2,10 +2,11 @@ package cli
 
 import (
 	"github.com/portainer/portainer-updater/agent"
+	"github.com/portainer/portainer-updater/log"
 )
 
 var CLI struct {
-	Debug bool `help:"Enable debug mode."`
-
+	LogLevel    log.Level                `kong:"help='Set the logging level',default='INFO',enum='DEBUG,INFO,WARN,ERROR',env='LOG_LEVEL'"`
+	PrettyLog   bool                     `kong:"help='Whether to enable or disable colored logs output',default='false',env='PRETTY_LOG'"`
 	AgentUpdate agent.AgentUpdateCommand `cmd:"" help:"Update an existing Portainer agent container."`
 }

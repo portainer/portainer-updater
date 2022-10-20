@@ -13,6 +13,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/pkg/errors"
 	"github.com/portainer/portainer-updater/context"
+	"github.com/rs/zerolog/log"
 )
 
 // UpdateScheduleIDLabel is the label used to store the update schedule ID
@@ -21,38 +22,44 @@ const UpdateScheduleIDLabel = "io.portainer.update.scheduleId"
 var errAgentUpdateFailure = errors.New("agent update failure")
 
 func Update(oldContainerId string, imageName string, scheduleId string, cmdCtx *context.CommandExecutionContext) error {
-	cmdCtx.Logger.Infow("Starting Portainer agent upgrade process",
-		"containerId", oldContainerId,
-		"image", imageName,
-	)
+	log.Info().
+		Str("containerId", oldContainerId).
+		Str("image", imageName).
+		Msg("Starting update process")
 
-	// We look for the existing agent container to copy its configuration
-	cmdCtx.Logger.Debugw("Looking for Portainer agent container", "containerName", oldContainerId)
+		// We look for the existing container to copy its configuration
+	log.Debug().
+		Str("containerId", oldContainerId).
+		Msg("Looking for container")
+
 	oldContainer, err := cmdCtx.DockerCLI.ContainerInspect(cmdCtx.Context, oldContainerId)
 	if err != nil {
-		cmdCtx.Logger.Errorw("Unable to find Portainer agent container",
-			"error", err,
-		)
+		log.Error().
+			Err(err).
+			Str("containerId", oldContainerId).
+			Msg("Unable to inspect container")
+
 		return errAgentUpdateFailure
 	}
+
+	log.Debug().
+		Str("image", imageName).
+		Str("containerImage", oldContainer.Config.Image).
+		Msg("Checking whether the latest image is available")
 
 	imageUpToDate, err := pullImage(cmdCtx, imageName)
 	if err != nil {
-		cmdCtx.Logger.Errorw("Unable to pull image", "error", err)
+		log.Err(err).
+			Msg("Unable to pull image")
+
 		return errAgentUpdateFailure
 	}
 
-	// We then check if the agent is running the latest version already
-	cmdCtx.Logger.Debugw("Checking whether the latest Portainer image is available",
-		"image", imageName,
-		"containerImage", oldContainer.Config.Image,
-	)
-
 	if oldContainer.Config.Image == imageName && imageUpToDate {
-		cmdCtx.Logger.Infow("Portainer agent already using the latest version of the image",
-			"containerName", oldContainerId,
-			"image", imageName,
-		)
+		log.Info().
+			Str("image", imageName).
+			Str("containerId", oldContainerId).
+			Msg("Image is already up to date, shutting down")
 
 		return nil
 	}
@@ -64,19 +71,24 @@ func Update(oldContainerId string, imageName string, scheduleId string, cmdCtx *
 
 	newContainerID, err := createContainer(cmdCtx, imageName, scheduleId, tempAgentContainerName, oldContainer)
 	if err != nil {
-		cmdCtx.Logger.Errorw("Unable to create Portainer agent container", "error", err)
+		log.Err(err).
+			Msg("Unable to create container")
+
 		return cleanupContainerAndError(cmdCtx, oldContainerId, newContainerID)
 	}
 
 	err = startContainer(cmdCtx, oldContainer.ID, newContainerID)
 	if err != nil {
-		cmdCtx.Logger.Errorw("Unable to start Portainer agent container", "error", err)
+		log.Err(err).
+			Msg("Unable to start container")
+
 		return cleanupContainerAndError(cmdCtx, oldContainerId, newContainerID)
 	}
 
 	healthy, err := monitorHealth(cmdCtx, newContainerID)
 	if err != nil {
-		cmdCtx.Logger.Errorw("Unable to monitor new Portainer agent container health", "error", err)
+		log.Err(err).
+			Msg("Unable to monitor container health")
 		return cleanupContainerAndError(cmdCtx, oldContainerId, newContainerID)
 	}
 
@@ -84,41 +96,44 @@ func Update(oldContainerId string, imageName string, scheduleId string, cmdCtx *
 		return cleanupContainerAndError(cmdCtx, oldContainerId, newContainerID)
 	}
 
-	cmdCtx.Logger.Info("New Portainer agent container is healthy. The old Portainer agent container will be removed.")
+	log.Info().
+		Msg("New container is healthy. The old  will be removed.")
 
-	removeOldContainer(cmdCtx, oldContainer.ID)
+	tryRemoveOldContainer(cmdCtx, oldContainer.ID)
 
 	// rename new container to old container name
 	err = cmdCtx.DockerCLI.ContainerRename(cmdCtx.Context, newContainerID, oldContainerName)
 	if err != nil {
-		cmdCtx.Logger.Errorw("Unable to rename new Portainer agent container", "error", err)
+		log.Err(err).
+			Msg("Unable to rename container")
 		return nil
 	}
 
-	cmdCtx.Logger.Infow("Portainer agent upgrade process completed",
-		"containerName", oldContainerName,
-		"containerID", newContainerID,
-		"image", imageName,
-	)
+	log.Info().
+		Str("containerId", newContainerID).
+		Str("image", imageName).
+		Str("containerName", oldContainerName).
+		Msg("Update process completed")
 
 	return nil
 }
 
 func cleanupContainerAndError(cmdCtx *context.CommandExecutionContext, oldContainerId, newContainerID string) error {
-	cmdCtx.Logger.Debugw("An error occurred during the upgrade process - removing newly created Portainer agent container",
-		"containerID", newContainerID,
-	)
+	log.Debug().
+		Msg("An error occurred during the update process - removing newly created container")
 
 	// should restart old container
 	err := cmdCtx.DockerCLI.ContainerStart(cmdCtx.Context, oldContainerId, types.ContainerStartOptions{})
 	if err != nil {
-		cmdCtx.Logger.Errorw("Unable to restart old Portainer agent container", "error", err)
+		log.Err(err).
+			Msg("Unable to restart container, please restart it manually")
 	}
 
 	if newContainerID != "" {
 		err = cmdCtx.DockerCLI.ContainerRemove(cmdCtx.Context, newContainerID, types.ContainerRemoveOptions{Force: true})
 		if err != nil {
-			cmdCtx.Logger.Errorw("Unable to remove new Portainer agent container", "error", err)
+			log.Err(err).
+				Msg("Unable to remove temporary container, please remove it manually")
 		}
 	}
 
@@ -138,11 +153,16 @@ func pullImage(cmdCtx *context.CommandExecutionContext, imageName string) (bool,
 		return false, nil
 	}
 
-	cmdCtx.Logger.Debugw("Pulling Docker image", "image", imageName)
+	log.Debug().
+		Str("image", imageName).
+		Msg("Pulling Docker image")
 
 	reader, err := cmdCtx.DockerCLI.ImagePull(cmdCtx.Context, imageName, types.ImagePullOptions{})
 	if err != nil {
-		cmdCtx.Logger.Errorw("Unable to pull Docker image", "error", err)
+		log.Err(err).
+			Str("image", imageName).
+			Msg("Unable to pull image")
+
 		return false, errAgentUpdateFailure
 	}
 	defer reader.Close()
@@ -206,10 +226,10 @@ func copyContainerConfig(imageName string, updateScheduleId string, config *cont
 
 func applyNetworks(cmdCtx *context.CommandExecutionContext, containerID string, networks []string) error {
 	// We have to join all the networks one by one after container creation
-	cmdCtx.Logger.Debugw("Joining Portainer agent container to Docker networks",
-		"networks", networks,
-		"containerID", containerID,
-	)
+	log.Debug().
+		Str("containerId", containerID).
+		Interface("networks", networks).
+		Msg("Joining container to Docker networks")
 
 	for _, networkName := range networks {
 		err := cmdCtx.DockerCLI.NetworkConnect(cmdCtx.Context, networkName, containerID, nil)
@@ -221,25 +241,24 @@ func applyNetworks(cmdCtx *context.CommandExecutionContext, containerID string, 
 	return nil
 }
 
-func removeOldContainer(cmdCtx *context.CommandExecutionContext, oldContainerId string) error {
-	cmdCtx.Logger.Debugw("Removing old Portainer agent container",
-		"containerID", oldContainerId,
-	)
+func tryRemoveOldContainer(cmdCtx *context.CommandExecutionContext, oldContainerId string) {
+	log.Debug().
+		Str("containerId", oldContainerId).
+		Msg("Removing old Portainer agent container")
 
 	// remove old container
 	err := cmdCtx.DockerCLI.ContainerRemove(cmdCtx.Context, oldContainerId, types.ContainerRemoveOptions{Force: true})
 	if err != nil {
-		cmdCtx.Logger.Warnw("Unable to remove old Portainer agent container", "error", err)
-		// I think we shouldn't clean here. The new container is already running, so we should let the user decide what to do.
+		log.Warn().Err(err).Msg("Unable to remove old Portainer agent container")
 	}
-
-	return nil
 }
 
 func monitorHealth(cmdCtx *context.CommandExecutionContext, containerId string) (bool, error) {
 	// We then wait for the new agent to be ready and monitor its health
 	// This is done by inspecting the agent healthcheck status
-	cmdCtx.Logger.Debug("Monitoring new Portainer agent container health")
+	log.Debug().
+		Str("containerId", containerId).
+		Msg("Monitoring new container health")
 
 	container, err := cmdCtx.DockerCLI.ContainerInspect(cmdCtx.Context, containerId)
 	if err != nil {
@@ -247,7 +266,10 @@ func monitorHealth(cmdCtx *context.CommandExecutionContext, containerId string) 
 	}
 
 	if container.State.Health == nil {
-		cmdCtx.Logger.Info("No health check found for the new Portainer agent container. Assuming health check passed.")
+		log.Info().
+			Str("containerId", containerId).
+			Msg("No health check found for the container. Assuming health check passed.")
+
 		return true, nil
 	}
 
@@ -261,16 +283,18 @@ func monitorHealth(cmdCtx *context.CommandExecutionContext, containerId string) 
 		}
 
 		if container.State.Health.Status == "unhealthy" {
-			cmdCtx.Logger.Errorw("New Portainer agent container health check failed. Exiting without updating the agent",
-				"status", container.State.Health.Status,
-				"logs", container.State.Health.Log,
-			)
+			log.Error().
+				Str("Status", container.State.Health.Status).
+				Interface("Logs", container.State.Health.Log).
+				Msg("Health check failed. Exiting without updating the agent")
+
 			return false, nil
 		}
 
-		cmdCtx.Logger.Debugw("New Portainer agent container health check in progress",
-			"status", container.State.Health.Status,
-		)
+		log.Debug().
+			Str("containerId", containerId).
+			Str("status", container.State.Health.Status).
+			Msg("Container health check in progress")
 
 		time.Sleep(5 * time.Second)
 		container, err = cmdCtx.DockerCLI.ContainerInspect(cmdCtx.Context, containerId)
@@ -279,17 +303,24 @@ func monitorHealth(cmdCtx *context.CommandExecutionContext, containerId string) 
 		}
 	}
 
-	cmdCtx.Logger.Errorw("New Portainer agent container health check timed out. Exiting without updating the agent",
-		"status", container.State.Health.Status,
-		"logs", container.State.Health.Log,
-	)
+	// cmdCtx.Logger.Errorw("New Portainer agent container health check timed out. Exiting without updating the agent",
+	// 	"status", container.State.Health.Status,
+	// 	"logs", container.State.Health.Log,
+	// )
+	log.Error().
+		Str("status", container.State.Health.Status).
+		Interface("logs", container.State.Health.Log).
+		Msg("Health check timed out. Exiting without updating the agent")
+
 	return false, nil
 
 }
 
 func startContainer(cmdCtx *context.CommandExecutionContext, oldContainerID, newContainerID string) error {
 	// We then start the new agent container
-	cmdCtx.Logger.Debugw("Starting new Portainer agent container", "containerID", newContainerID)
+	log.Debug().
+		Str("containerId", newContainerID).
+		Msg("Starting new container")
 
 	err := cmdCtx.DockerCLI.ContainerStop(cmdCtx.Context, oldContainerID, nil)
 	if err != nil {
@@ -305,10 +336,10 @@ func startContainer(cmdCtx *context.CommandExecutionContext, oldContainerID, new
 }
 
 func createContainer(cmdCtx *context.CommandExecutionContext, imageName, updateScheduleId string, tempContainerName string, oldContainer types.ContainerJSON) (string, error) {
-	cmdCtx.Logger.Debugw("Creating new Portainer agent container",
-		"containerName", tempContainerName,
-		"image", imageName,
-	)
+	log.Debug().
+		Str("containerName", tempContainerName).
+		Str("image", imageName).
+		Msg("Creating new container")
 
 	containerConfigCopy, networks, networkConfig := copyContainerConfig(imageName, updateScheduleId, oldContainer.Config, oldContainer.NetworkSettings.Networks)
 

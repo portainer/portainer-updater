@@ -4,6 +4,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/portainer/portainer-updater/context"
 	"github.com/portainer/portainer-updater/update"
+	"github.com/rs/zerolog/log"
 )
 
 type AgentUpdateCommand struct {
@@ -12,14 +13,18 @@ type AgentUpdateCommand struct {
 }
 
 func (r *AgentUpdateCommand) Run(cmdCtx *context.CommandExecutionContext) error {
-	cmdCtx.Logger.With("image", r.Image, "scheduleId", r.ScheduleId).Info("Updating agent")
+	log.Info().
+		Str("image", r.Image).
+		Str("schedule-id", r.ScheduleId).
+		Msg("Updating Portainer agent")
 	oldContainer, err := findContainer(cmdCtx.Context, cmdCtx.DockerCLI)
 	if err != nil {
 		return errors.WithMessage(err, "failed finding container id")
 	}
 
 	if oldContainer.Labels != nil && oldContainer.Labels[update.UpdateScheduleIDLabel] == r.ScheduleId {
-		cmdCtx.Logger.Info("Agent already updated")
+		log.Info().Msg("Agent already updated")
+
 		return nil
 	}
 
