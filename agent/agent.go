@@ -94,10 +94,10 @@ func (r *AgentCommand) runNomad(ctx context.Context) error {
 		return errors.WithMessage(err, "failed to initialize Nomad client")
 	}
 
-	task, err := nomad.FindAgentContainer(ctx, nomadCli)
+	job, task, err := nomad.FindAgentContainer(ctx, nomadCli)
 	if err != nil {
 		return errors.WithMessage(err, "failed finding container id")
 	}
 
-	return nomad.Update(ctx, nomadCli, task.Name, r.Image, r.ScheduleId)
+	return nomad.Update(ctx, nomadCli, job, task, r.Image, r.ScheduleId)
 }
