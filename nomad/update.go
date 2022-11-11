@@ -24,7 +24,10 @@ func Update(ctx context.Context, nomadCli *api.Client, job *api.Job, task *api.T
 
 	job.Update = api.DefaultUpdateStrategy()
 	task.Config["image"] = imageName
-	response, _, err := nomadCli.Jobs().Register(job, nil)
+
+	response, _, err := nomadCli.Jobs().EnforceRegister(job, *job.JobModifyIndex, nil)
+
+	// response, _, err := nomadCli.Jobs().Register(job, nil)
 	if err != nil {
 		return errors.WithMessage(err, "failed to register job")
 	}
