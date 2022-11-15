@@ -2,6 +2,10 @@ package nomad
 
 import (
 	"context"
+	"io"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/hashicorp/nomad/api"
@@ -24,6 +28,11 @@ func Update(ctx context.Context, nomadCli *api.Client, job *api.Job, task *api.T
 	if err != nil {
 		return errors.WithMessage(err, "failed to register job")
 	}
+
+	log.Debug().
+		Str("job", *job.Name).
+		Str("warnings", response.Warnings).
+		Msg("Job registered")
 
 	allocations, _, err := nomadCli.Jobs().Allocations(*job.ID, false, &api.QueryOptions{WaitIndex: response.JobModifyIndex})
 	if err != nil {
@@ -62,6 +71,41 @@ func Update(ctx context.Context, nomadCli *api.Client, job *api.Job, task *api.T
 					Msg("Allocation success")
 				return nil
 			}
+
+			cancel := make(chan struct{})
+			frames, errCh := nomadCli.AllocFS().Logs(allocation, false, task.Name, "stderr", "end", 10, cancel, nil)
+
+			select {
+			case err := <-errCh:
+				return err
+			default:
+			}
+			signalCh := make(chan os.Signal, 1)
+			signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+
+			// Create a reader
+			var r io.ReadCloser
+			frameReader := api.NewFrameReader(frames, errCh, cancel)
+			frameReader.SetUnblockTime(500 * time.Millisecond)
+			r = frameReader
+
+			go func() {
+				<-signalCh
+
+				// End the streaming
+				r.Close()
+			}()
+
+			output := ""
+			if b, err := io.ReadAll(r); err == nil {
+				output = string(b)
+			}
+
+			log.Error().
+				Str("allocation", allocation.ID).
+				Str("status", allocation.ClientStatus).
+				Str("output", output).
+				Msg("Allocation failed")
 
 			if allocation.ClientStatus == api.AllocClientStatusFailed {
 				return errors.New("allocation failed")

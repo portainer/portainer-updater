@@ -23,6 +23,10 @@ func FindAgentContainer(ctx context.Context, nomadCli *api.Client) (job *api.Job
 			return nil, nil, errors.WithMessage(err, "failed to get job info")
 		}
 
+		if *job.Status != "running" {
+			continue
+		}
+
 		for _, group := range job.TaskGroups {
 			for _, task := range group.Tasks {
 				if task.Driver != "docker" {
