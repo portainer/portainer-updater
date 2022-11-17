@@ -90,27 +90,8 @@ func (r *AgentCommand) runStandalone(ctx context.Context) error {
 }
 
 func (r *AgentCommand) runNomad(ctx context.Context) error {
-	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		log.Fatal().Err(err).Msg("Unable to initialize Docker client")
-	}
 
-	log.Info().
-		Str("image", r.Image).
-		Str("schedule-id", r.ScheduleId).
-		Msg("Updating Portainer agent")
-
-	oldContainer, err := dockerstandalone.FindAgentContainer(ctx, dockerCli)
-	if err != nil {
-		return errors.WithMessage(err, "failed finding container id")
-	}
-
-	container, err := dockerCli.ContainerInspect(ctx, oldContainer.ID)
-	if err != nil {
-		return errors.WithMessagef(err, "failed to inspect the container %s", oldContainer.ID)
-	}
-
-	envs := parseEnvFromArrayToMap(container.Config.Env)
+	envs := parseEnvs()
 	nomadAddress := envs[nomad.NomadAddrEnvVarName]
 	if strings.HasPrefix(nomadAddress, "https") {
 		// export the https address
@@ -122,19 +103,19 @@ func (r *AgentCommand) runNomad(ctx context.Context) error {
 		// Write the TLS certificate into files and export the path as the environment variables
 		nomadCACertContent := envs[nomad.NomadCACertContentEnvVarName]
 		if len(nomadCACertContent) == 0 {
-			log.Fatal().Err(err).Msg("nomad CA Certificate is not exported")
+			log.Fatal().Msg("nomad CA Certificate is not exported")
 		}
 
 		dataPath := "/home/oscar/source/github.com/portainer-updater/dist"
 		// dataPath := os.TempDir()
-		err = WriteFile(dataPath, nomad.NomadTLSCACertPath, []byte(nomadCACertContent), 0600)
+		err := WriteFile(dataPath, nomad.NomadTLSCACertPath, []byte(nomadCACertContent), 0600)
 		if err != nil {
 			log.Fatal().Err(err).Msg("fail to write the Nomad CA Certificate")
 		}
 
 		nomadClientCertContent := envs[nomad.NomadClientCertContentEnvVarName]
 		if len(nomadClientCertContent) == 0 {
-			log.Fatal().Err(err).Msg("Nomad Client Certificate is not exported")
+			log.Fatal().Msg("Nomad Client Certificate is not exported")
 		}
 
 		err = WriteFile(dataPath, nomad.NomadTLSCertPath, []byte(nomadClientCertContent), 0600)
@@ -144,7 +125,7 @@ func (r *AgentCommand) runNomad(ctx context.Context) error {
 
 		nomadClientKeyContent := envs[nomad.NomadClientKeyContentEnvVarName]
 		if len(nomadClientKeyContent) == 0 {
-			log.Fatal().Err(err).Msg("Nomad Client Key is not exported")
+			log.Fatal().Msg("Nomad Client Key is not exported")
 		}
 
 		err = WriteFile(dataPath, nomad.NomadTLSKeyPath, []byte(nomadClientKeyContent), 0600)
@@ -170,9 +151,10 @@ func (r *AgentCommand) runNomad(ctx context.Context) error {
 	return nomad.Update(ctx, nomadCli, job, task, r.Image, r.ScheduleId)
 }
 
-func parseEnvFromArrayToMap(envs []string) map[string]string {
+func parseEnvs() map[string]string {
+	fmt.Println("envs===", os.Environ())
 	ret := make(map[string]string)
-	for _, env := range envs {
+	for _, env := range os.Environ() {
 		nParts := strings.SplitN(env, "=", 2)
 		ret[nParts[0]] = nParts[1]
 	}
