@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -90,55 +89,19 @@ func (r *AgentCommand) runStandalone(ctx context.Context) error {
 }
 
 func (r *AgentCommand) runNomad(ctx context.Context) error {
+	nomadConfig := api.DefaultConfig()
 
-	envs := parseEnvs()
-	nomadAddress := envs[nomad.NomadAddrEnvVarName]
+	nomadAddress := os.Getenv(nomad.NomadAddrEnvVarName)
 	if strings.HasPrefix(nomadAddress, "https") {
-		// export the https address
-		os.Setenv(nomad.NomadAddrEnvVarName, nomadAddress)
-
-		// export the namespace
-		os.Setenv(nomad.NomadNamespaceEnvVarName, envs[nomad.NomadNamespaceEnvVarName])
-
-		// Write the TLS certificate into files and export the path as the environment variables
-		nomadCACertContent := envs[nomad.NomadCACertContentEnvVarName]
-		if len(nomadCACertContent) == 0 {
-			log.Fatal().Msg("nomad CA Certificate is not exported")
+		tls := &api.TLSConfig{
+			CACertPEM:     []byte(os.Getenv(nomad.NomadCACertContentEnvVarName)),
+			ClientCertPEM: []byte(os.Getenv(nomad.NomadClientCertContentEnvVarName)),
+			ClientKeyPEM:  []byte(os.Getenv(nomad.NomadClientKeyContentEnvVarName)),
 		}
-
-		dataPath := "/home/oscar/source/github.com/portainer-updater/dist"
-		// dataPath := os.TempDir()
-		err := WriteFile(dataPath, nomad.NomadTLSCACertPath, []byte(nomadCACertContent), 0600)
-		if err != nil {
-			log.Fatal().Err(err).Msg("fail to write the Nomad CA Certificate")
-		}
-
-		nomadClientCertContent := envs[nomad.NomadClientCertContentEnvVarName]
-		if len(nomadClientCertContent) == 0 {
-			log.Fatal().Msg("Nomad Client Certificate is not exported")
-		}
-
-		err = WriteFile(dataPath, nomad.NomadTLSCertPath, []byte(nomadClientCertContent), 0600)
-		if err != nil {
-			log.Fatal().Err(err).Msg("fail to write the Nomad Client Certificate")
-		}
-
-		nomadClientKeyContent := envs[nomad.NomadClientKeyContentEnvVarName]
-		if len(nomadClientKeyContent) == 0 {
-			log.Fatal().Msg("Nomad Client Key is not exported")
-		}
-
-		err = WriteFile(dataPath, nomad.NomadTLSKeyPath, []byte(nomadClientKeyContent), 0600)
-		if err != nil {
-			log.Fatal().Err(err).Msg("fail to write the Nomad Client Key")
-		}
-
-		os.Setenv(nomad.NomadCACertEnvVarName, path.Join(dataPath, nomad.NomadTLSCACertPath))
-		os.Setenv(nomad.NomadClientCertEnvVarName, path.Join(dataPath, nomad.NomadTLSCertPath))
-		os.Setenv(nomad.NomadClientKeyEnvVarName, path.Join(dataPath, nomad.NomadTLSKeyPath))
+		nomadConfig.TLSConfig = tls
 	}
 
-	nomadCli, err := api.NewClient(api.DefaultConfig())
+	nomadCli, err := api.NewClient(nomadConfig)
 	if err != nil {
 		return errors.WithMessage(err, "failed to initialize Nomad client")
 	}
@@ -149,16 +112,6 @@ func (r *AgentCommand) runNomad(ctx context.Context) error {
 	}
 
 	return nomad.Update(ctx, nomadCli, job, task, r.Image, r.ScheduleId)
-}
-
-func parseEnvs() map[string]string {
-	fmt.Println("envs===", os.Environ())
-	ret := make(map[string]string)
-	for _, env := range os.Environ() {
-		nParts := strings.SplitN(env, "=", 2)
-		ret[nParts[0]] = nParts[1]
-	}
-	return ret
 }
 
 // WriteFile takes a path, filename, a file and the mode that should be associated
