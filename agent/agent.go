@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/docker/docker/client"
@@ -88,17 +87,4 @@ func (r *AgentCommand) runNomad(ctx context.Context) error {
 	}
 
 	return nomad.Update(ctx, nomadCli, job, task, r.Image, r.ScheduleId)
-}
-
-// WriteFile takes a path, filename, a file and the mode that should be associated
-// to the file and writes it to disk
-func WriteFile(folder, filename string, file []byte, mode uint32) error {
-	err := os.MkdirAll(folder, 0755)
-	if err != nil {
-		return err
-	}
-
-	filePath := path.Join(folder, filename)
-
-	return os.WriteFile(filePath, file, os.FileMode(mode))
 }
