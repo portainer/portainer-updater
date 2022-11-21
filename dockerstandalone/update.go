@@ -17,12 +17,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// UpdateScheduleIDLabel is the label used to store the update schedule ID
-const UpdateScheduleIDLabel = "io.portainer.update.scheduleId"
-
 var errUpdateFailure = errors.New("update failure")
 
-func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string, imageName string, scheduleId string) error {
+func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string, imageName string, updateConfig func(*container.Config)) error {
 	log.Info().
 		Str("containerId", oldContainerId).
 		Str("image", imageName).
@@ -70,7 +67,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 	// We create the new container
 	tempContainerName := buildContainerName(oldContainerName)
 
-	newContainerID, err := createContainer(ctx, dockerCli, imageName, scheduleId, tempContainerName, oldContainer)
+	newContainerID, err := createContainer(ctx, dockerCli, imageName, tempContainerName, oldContainer, updateConfig)
 	if err != nil {
 		log.Err(err).
 			Msg("Unable to create container")
@@ -127,10 +124,13 @@ func cleanupContainerAndError(ctx context.Context, dockerCli *client.Client, old
 	err := dockerCli.ContainerStart(ctx, oldContainerId, types.ContainerStartOptions{})
 	if err != nil {
 		log.Err(err).
+			Str("containerId", oldContainerId).
 			Msg("Unable to restart container, please restart it manually")
 	}
 
 	if newContainerID != "" {
+		printLogsToStdout(ctx, dockerCli, newContainerID)
+
 		err = dockerCli.ContainerRemove(ctx, newContainerID, types.ContainerRemoveOptions{Force: true})
 		if err != nil {
 			log.Err(err).
@@ -182,7 +182,7 @@ func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) 
 	return strings.Contains(imagePullOutputBuf.String(), "Image is up to date"), nil
 }
 
-func copyContainerConfig(imageName string, updateScheduleId string, config *container.Config, containerNetworks map[string]*network.EndpointSettings) (newConfig *container.Config, networks []string, networkConfig *network.NetworkingConfig) {
+func copyContainerConfig(imageName string, config *container.Config, containerNetworks map[string]*network.EndpointSettings) (newConfig *container.Config, networks []string, networkConfig *network.NetworkingConfig) {
 	// We copy the original Portainer configuration and apply a few changes:
 	// * we replace the image name
 	// * we strip the hostname from the original configuration to avoid networking issues with the internal Docker DNS
@@ -191,25 +191,6 @@ func copyContainerConfig(imageName string, updateScheduleId string, config *cont
 	containerConfigCopy.Image = imageName
 	containerConfigCopy.Hostname = ""
 	containerConfigCopy.Healthcheck = nil
-	foundIndex := -1
-	for index, env := range containerConfigCopy.Env {
-		if strings.HasPrefix(env, "UPDATE_ID=") {
-			foundIndex = index
-		}
-	}
-
-	scheduleEnv := fmt.Sprintf("UPDATE_ID=%s", updateScheduleId)
-	if foundIndex != -1 {
-		containerConfigCopy.Env[foundIndex] = scheduleEnv
-	} else {
-		containerConfigCopy.Env = append(containerConfigCopy.Env, scheduleEnv)
-	}
-
-	if containerConfigCopy.Labels == nil {
-		containerConfigCopy.Labels = make(map[string]string)
-	}
-
-	containerConfigCopy.Labels[UpdateScheduleIDLabel] = updateScheduleId
 
 	// We add the new container in the same Docker container networks as the previous container
 	// This configuration is copied to the new container configuration
@@ -261,20 +242,26 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 		Str("containerId", containerId).
 		Msg("Monitoring new container health")
 
+	// wait for healthcheck to be available or for the container to be stopped in case of error
+	time.Sleep(15 * time.Second)
+
 	container, err := dockerCli.ContainerInspect(ctx, containerId)
 	if err != nil {
 		return false, errors.WithMessage(err, "Unable to inspect new container")
 	}
 
 	if container.State.Health == nil {
+		if container.State.Status == "exited" {
+			return false, errors.New("Container exited unexpectedly")
+		}
+
 		log.Info().
 			Str("containerId", containerId).
+			Str("status", container.State.Status).
 			Msg("No health check found for the container. Assuming health check passed.")
 
 		return true, nil
 	}
-
-	time.Sleep(15 * time.Second)
 
 	tries := 5
 	for i := 0; i < tries; i++ {
@@ -332,13 +319,15 @@ func startContainer(ctx context.Context, dockerCli *client.Client, oldContainerI
 	return nil
 }
 
-func createContainer(ctx context.Context, dockerCli *client.Client, imageName, updateScheduleId string, tempContainerName string, oldContainer types.ContainerJSON) (string, error) {
+func createContainer(ctx context.Context, dockerCli *client.Client, imageName, tempContainerName string, oldContainer types.ContainerJSON, updateConfig func(*container.Config)) (string, error) {
 	log.Debug().
 		Str("containerName", tempContainerName).
 		Str("image", imageName).
 		Msg("Creating new container")
 
-	containerConfigCopy, networks, networkConfig := copyContainerConfig(imageName, updateScheduleId, oldContainer.Config, oldContainer.NetworkSettings.Networks)
+	containerConfigCopy, networks, networkConfig := copyContainerConfig(imageName, oldContainer.Config, oldContainer.NetworkSettings.Networks)
+
+	updateConfig(containerConfigCopy)
 
 	newContainer, err := dockerCli.ContainerCreate(ctx,
 		containerConfigCopy,
@@ -357,4 +346,24 @@ func createContainer(ctx context.Context, dockerCli *client.Client, imageName, u
 	}
 
 	return newContainer.ID, nil
+}
+
+func printLogsToStdout(ctx context.Context, dockerCli *client.Client, containerID string) {
+	log.Debug().
+		Str("containerId", containerID).
+		Msg("Printing container logs to stdout")
+
+	reader, err := dockerCli.ContainerLogs(ctx, containerID, types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true})
+	if err != nil {
+		log.Error().Err(err).Msg("Unable to get container logs")
+		return
+	}
+
+	defer reader.Close()
+
+	_, err = io.Copy(os.Stdout, reader)
+	if err != nil {
+		log.Error().Err(err).Msg("Unable to print container logs")
+	}
+
 }

@@ -2,12 +2,18 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/portainer/portainer-updater/dockerstandalone"
 	"github.com/rs/zerolog/log"
 )
+
+// UpdateScheduleIDLabel is the label used to store the update schedule ID
+const UpdateScheduleIDLabel = "io.portainer.update.scheduleId"
 
 type EnvType string
 
@@ -48,11 +54,31 @@ func (r *AgentCommand) runStandalone(ctx context.Context) error {
 		return errors.WithMessage(err, "failed finding container id")
 	}
 
-	if oldContainer.Labels != nil && oldContainer.Labels[dockerstandalone.UpdateScheduleIDLabel] == r.ScheduleId {
+	if oldContainer.Labels != nil && oldContainer.Labels[UpdateScheduleIDLabel] == r.ScheduleId {
 		log.Info().Msg("Agent already updated")
 
 		return nil
 	}
 
-	return dockerstandalone.Update(ctx, dockerCli, oldContainer.ID, r.Image, r.ScheduleId)
+	return dockerstandalone.Update(ctx, dockerCli, oldContainer.ID, r.Image, func(config *container.Config) {
+		foundIndex := -1
+		for index, env := range config.Env {
+			if strings.HasPrefix(env, "UPDATE_ID=") {
+				foundIndex = index
+			}
+		}
+
+		scheduleEnv := fmt.Sprintf("UPDATE_ID=%s", r.ScheduleId)
+		if foundIndex != -1 {
+			config.Env[foundIndex] = scheduleEnv
+		} else {
+			config.Env = append(config.Env, scheduleEnv)
+		}
+
+		if config.Labels == nil {
+			config.Labels = make(map[string]string)
+		}
+
+		config.Labels[UpdateScheduleIDLabel] = r.ScheduleId
+	})
 }
