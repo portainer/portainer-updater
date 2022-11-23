@@ -41,4 +41,5 @@ func FindPortainerService(ctx context.Context, dockerCli *client.Client) (*swarm
 	}
 
 	return &services[0], nil
+
 }
