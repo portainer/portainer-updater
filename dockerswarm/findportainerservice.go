@@ -9,6 +9,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/portainer/portainer-updater/dockerstandalone"
+	"github.com/rs/zerolog/log"
 )
 
 func FindPortainerService(ctx context.Context, dockerCli *client.Client) (*swarm.Service, error) {
@@ -19,6 +20,11 @@ func FindPortainerService(ctx context.Context, dockerCli *client.Client) (*swarm
 
 	serviceName := container.Labels["com.docker.swarm.service.name"]
 	if serviceName == "" {
+		log.Debug().
+			Str("container", container.ID).
+			Interface("labels", container.Labels).
+			Msg("Container is not part of a service")
+
 		return nil, errors.New("unable to find service name")
 	}
 
