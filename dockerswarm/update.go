@@ -22,13 +22,6 @@ func Update(ctx context.Context, dockerCli *client.Client, imageName string, ser
 		Str("image", imageName).
 		Msg("Starting update process")
 
-		// We look for the existing container to copy its configuration
-	log.Debug().
-		Str("serviceId", service.ID).
-		Msg("Looking for container")
-
-	// dockerCli.
-
 	log.Debug().
 		Str("image", imageName).
 		Str("containerImage", service.Spec.TaskTemplate.ContainerSpec.Image).
