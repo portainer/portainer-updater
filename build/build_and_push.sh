@@ -12,6 +12,8 @@ TAG=${2:-"latest"}
 
 BUILDS=('linux/amd64' 'linux/arm64' 'linux/arm' 'windows/amd64')
 
+GIT_COMMIT=$(git log -1 --format=%h)
+
 
 docker_image_build_and_push()
 {
@@ -24,7 +26,7 @@ docker_image_build_and_push()
   echo "Building $image"
 
   dockerfile="build/linux/Dockerfile"
-  build_args=()
+  build_args=(--build-arg GIT_COMMIT="$GIT_COMMIT")
   if [[ ${os} == "windows" ]]; then
       dockerfile="build/windows/Dockerfile"
       build_args+=(--build-arg OSVERSION=1809)
