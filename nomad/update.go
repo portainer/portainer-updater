@@ -66,47 +66,17 @@ func Update(ctx context.Context, nomadCli *api.Client, job *api.Job, task *api.T
 			}
 
 			if allocation.ClientStatus == api.AllocClientStatusRunning {
-				log.Debug().
+				log.Info().
 					Str("allocation", allocation.ID).
 					Str("status", allocation.ClientStatus).
 					Msg("Allocation success")
 				return nil
 			}
 
-			cancel := make(chan struct{})
-			frames, errCh := nomadCli.AllocFS().Logs(allocation, false, task.Name, "stderr", "end", 10, cancel, nil)
-
-			select {
-			case err := <-errCh:
+			err = readLogs(nomadCli, allocation, task)
+			if err != nil {
 				return err
-			default:
 			}
-			signalCh := make(chan os.Signal, 1)
-			signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
-
-			// Create a reader
-			var r io.ReadCloser
-			frameReader := api.NewFrameReader(frames, errCh, cancel)
-			frameReader.SetUnblockTime(500 * time.Millisecond)
-			r = frameReader
-
-			go func() {
-				<-signalCh
-
-				// End the streaming
-				r.Close()
-			}()
-
-			output := ""
-			if b, err := io.ReadAll(r); err == nil {
-				output = string(b)
-			}
-
-			log.Error().
-				Str("allocation", allocation.ID).
-				Str("status", allocation.ClientStatus).
-				Str("output", output).
-				Msg("Allocation failed")
 
 			if allocation.ClientStatus == api.AllocClientStatusFailed {
 				return errors.New("allocation failed")
@@ -125,4 +95,43 @@ func Update(ctx context.Context, nomadCli *api.Client, job *api.Job, task *api.T
 	}
 
 	return errors.New("no allocations found")
+}
+
+func readLogs(nomadCli *api.Client, allocation *api.Allocation, task *api.Task) error {
+	cancel := make(chan struct{})
+	frames, errCh := nomadCli.AllocFS().Logs(allocation, false, task.Name, "stderr", "end", 10, cancel, nil)
+
+	select {
+	case err := <-errCh:
+		return err
+	default:
+	}
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+
+	// Create a reader
+	var r io.ReadCloser
+	frameReader := api.NewFrameReader(frames, errCh, cancel)
+	frameReader.SetUnblockTime(500 * time.Millisecond)
+	r = frameReader
+
+	go func() {
+		<-signalCh
+
+		// End the streaming
+		r.Close()
+	}()
+
+	output := ""
+	if b, err := io.ReadAll(r); err == nil {
+		output = string(b)
+	}
+
+	log.Error().
+		Str("allocation", allocation.ID).
+		Str("status", allocation.ClientStatus).
+		Str("output", output).
+		Msg("Allocation failed")
+
+	return nil
 }
