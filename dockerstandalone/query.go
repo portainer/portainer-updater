@@ -11,6 +11,13 @@ import (
 	"github.com/pkg/errors"
 )
 
+type queryFn = func(context.Context, *client.Client) (*types.Container, error)
+
+type findContainerQuery struct {
+	fn   queryFn
+	name string
+}
+
 func findByLabelFn(label string) queryFn {
 	return func(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
 		filters := filters.NewArgs()

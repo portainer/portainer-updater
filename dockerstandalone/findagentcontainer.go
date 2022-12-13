@@ -9,13 +9,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type queryFn = func(context.Context, *client.Client) (*types.Container, error)
-
-type findContainerQuery struct {
-	fn   queryFn
-	name string
-}
-
 func FindAgentContainer(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
 	queries := []findContainerQuery{
 		{findByLabelFn("io.portainer.agent=true"), "findByLabel"},
