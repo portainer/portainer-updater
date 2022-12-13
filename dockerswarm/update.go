@@ -6,11 +6,13 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
+	"github.com/portainer/portainer-updater/utils"
 	"github.com/rs/zerolog/log"
 )
 
@@ -47,8 +49,15 @@ func Update(ctx context.Context, dockerCli *client.Client, imageName string, ser
 	service.Spec.TaskTemplate.ContainerSpec.Image = imageName
 
 	updateConfig(service.Spec.TaskTemplate.ContainerSpec)
+	prevVersion := service.Meta.Version
+	service.Meta.Version = swarm.Version{Index: service.Meta.Version.Index + 1}
 
-	updateResponse, err := dockerCli.ServiceUpdate(ctx, service.ID, service.Meta.Version, service.Spec, types.ServiceUpdateOptions{})
+	service.Spec.UpdateConfig = &swarm.UpdateConfig{
+		FailureAction: swarm.UpdateFailureActionRollback,
+		Order:         swarm.UpdateOrderStopFirst,
+	}
+
+	updateResponse, err := dockerCli.ServiceUpdate(ctx, service.ID, prevVersion, service.Spec, types.ServiceUpdateOptions{})
 	if err != nil {
 		return errors.WithMessage(err, "unable to update service")
 	}
@@ -58,6 +67,29 @@ func Update(ctx context.Context, dockerCli *client.Client, imageName string, ser
 			Str("serviceId", service.ID).
 			Interface("warnings", updateResponse.Warnings).
 			Msg("Warnings during service update")
+	}
+
+	err = utils.WaitUntil(ctx, func() bool {
+		log.Debug().
+			Str("serviceId", service.ID).
+			Msg("Waiting for service update to complete")
+
+		service, _, err := dockerCli.ServiceInspectWithRaw(ctx, service.ID, types.ServiceInspectOptions{})
+		if err != nil {
+			log.Err(err).
+				Str("serviceId", service.ID).
+				Msg("Unable to inspect service")
+			return false
+		}
+
+		return service.UpdateStatus != nil && service.UpdateStatus.State == swarm.UpdateStateCompleted
+	}, 1*time.Minute, 5*time.Second)
+
+	if err != nil {
+		log.Err(err).
+			Str("serviceId", service.ID).
+			Msg("Unable to wait for service update to complete")
+		return errUpdateFailure
 	}
 
 	log.Info().
