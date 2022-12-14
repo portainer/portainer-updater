@@ -37,4 +37,4 @@ jobs:
       - name: build the image to portainer ci ( Develop Latest )
         if: ${{ github.ref == 'refs/heads/develop' }}
         run: |
-          "${GITHUB_WORKSPACE}/build/build_and_push.sh" portainerci
+          "${GITHUB_WORKSPACE}/build/build_and_push.sh" portainerci develop
