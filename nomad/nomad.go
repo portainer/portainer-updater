@@ -21,4 +21,6 @@ const (
 	EnvKeyEdgeKey          = "EDGE_KEY"
 	EnvKeyEdgeID           = "EDGE_ID"
 	EnvKeyEdgeInsecurePoll = "EDGE_INSECURE_POLL"
+
+	EnvKeyUpdateID = "UPDATE_ID"
 )

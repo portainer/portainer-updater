@@ -129,6 +129,8 @@ func (r *AgentCommand) runNomad(ctx context.Context) error {
 	task.Env[nomad.EnvKeyEdgeID] = os.Getenv(nomad.EnvKeyEdgeID)
 	task.Env[nomad.EnvKeyEdgeInsecurePoll] = os.Getenv(nomad.EnvKeyEdgeInsecurePoll)
 	task.Env[nomad.EnvKeyAgentSecret] = os.Getenv(nomad.EnvKeyAgentSecret)
+	// add update id
+	task.Env[nomad.EnvKeyUpdateID] = r.ScheduleId
 
 	return nomad.Update(ctx, nomadCli, job, task, r.Image, r.ScheduleId)
 }
