@@ -20,6 +20,7 @@ func Update(ctx context.Context, nomadCli *api.Client, job *api.Job, task *api.T
 		Str("task", task.Name).
 		Str("schedule-id", scheduleId).
 		Interface("task config", task.Config).
+		Interface("task env", task.Env).
 		Msg("Updating Portainer agent")
 
 	job.Update = api.DefaultUpdateStrategy()

@@ -110,5 +110,25 @@ func (r *AgentCommand) runNomad(ctx context.Context) error {
 		return errors.WithMessage(err, "failed finding container id")
 	}
 
+	if task.Env == nil {
+		task.Env = make(map[string]string, 0)
+	}
+
+	// add nomad env
+	task.Env[nomad.NomadAddrEnvVarName] = os.Getenv(nomad.NomadAddrEnvVarName)
+	task.Env[nomad.NomadNamespaceEnvVarName] = os.Getenv(nomad.NomadNamespaceEnvVarName)
+	task.Env[nomad.NomadRegionEnvVarName] = os.Getenv(nomad.NomadRegionEnvVarName)
+	task.Env[nomad.NomadTokenEnvVarName] = os.Getenv(nomad.NomadTokenEnvVarName)
+	// add nomad tls certificate info env
+	task.Env[nomad.NomadCACertContentEnvVarName] = os.Getenv(nomad.NomadCACertContentEnvVarName)
+	task.Env[nomad.NomadClientCertContentEnvVarName] = os.Getenv(nomad.NomadClientCertContentEnvVarName)
+	task.Env[nomad.NomadClientKeyContentEnvVarName] = os.Getenv(nomad.NomadClientKeyContentEnvVarName)
+	// add portainer agent env
+	task.Env[nomad.EnvKeyEdge] = os.Getenv(nomad.EnvKeyEdge)
+	task.Env[nomad.EnvKeyEdgeKey] = os.Getenv(nomad.EnvKeyEdgeKey)
+	task.Env[nomad.EnvKeyEdgeID] = os.Getenv(nomad.EnvKeyEdgeID)
+	task.Env[nomad.EnvKeyEdgeInsecurePoll] = os.Getenv(nomad.EnvKeyEdgeInsecurePoll)
+	task.Env[nomad.EnvKeyAgentSecret] = os.Getenv(nomad.EnvKeyAgentSecret)
+
 	return nomad.Update(ctx, nomadCli, job, task, r.Image, r.ScheduleId)
 }
