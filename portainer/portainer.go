@@ -16,7 +16,7 @@ type EnvType string
 
 const (
 	EnvTypeDockerStandalone EnvType = "standalone"
-	EnvTypeNomad            EnvType = "nomad"
+	EnvTypeSwarm            EnvType = "swarm"
 )
 
 type Command struct {
@@ -29,9 +29,9 @@ func (r *Command) Run() error {
 	ctx := context.Background()
 
 	switch r.EnvType {
-	case "standalone":
+	case EnvTypeDockerStandalone:
 		return r.runStandalone(ctx)
-	case "swarm":
+	case EnvTypeSwarm:
 		return r.runSwarm(ctx)
 	}
 

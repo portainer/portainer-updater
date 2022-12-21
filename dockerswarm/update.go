@@ -17,6 +17,7 @@ import (
 )
 
 var errUpdateFailure = errors.New("update failure")
+var errPullImageFailure = errors.New("pull image failure")
 
 func Update(ctx context.Context, dockerCli *client.Client, imageName string, service *swarm.Service, updateConfig func(*swarm.ContainerSpec)) error {
 	log.Info().
@@ -34,7 +35,7 @@ func Update(ctx context.Context, dockerCli *client.Client, imageName string, ser
 		log.Err(err).
 			Msg("Unable to pull image")
 
-		return errUpdateFailure
+		return err
 	}
 
 	if service.Spec.TaskTemplate.ContainerSpec.Image == imageName && imageUpToDate {
@@ -59,7 +60,7 @@ func Update(ctx context.Context, dockerCli *client.Client, imageName string, ser
 
 	updateResponse, err := dockerCli.ServiceUpdate(ctx, service.ID, prevVersion, service.Spec, types.ServiceUpdateOptions{})
 	if err != nil {
-		return errors.WithMessage(err, "unable to update service")
+		return errors.WithMessage(err, errUpdateFailure.Error())
 	}
 
 	if len(updateResponse.Warnings) > 0 {
@@ -101,7 +102,11 @@ func Update(ctx context.Context, dockerCli *client.Client, imageName string, ser
 }
 
 func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) (bool, error) {
-	if os.Getenv("SKIP_PULL") != "" {
+	if os.Getenv("SKIP_PULL") == "1" {
+		// When the target image is not existed on both remote and local, the
+		// existing portainer service can be mistakenly shutdown by docker
+		// swarm due to this fast failure, so it is better to check if the
+		// env "SKIP_PULL" is explicitly set to 1
 		return false, nil
 	}
 
@@ -115,7 +120,7 @@ func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) 
 			Str("image", imageName).
 			Msg("Unable to pull image")
 
-		return false, errUpdateFailure
+		return false, errPullImageFailure
 	}
 	defer reader.Close()
 
