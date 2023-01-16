@@ -12,7 +12,7 @@ import (
 func FindAgentContainer(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
 	queries := []findContainerQuery{
 		{findByLabelFn("io.portainer.agent=true"), "findByLabel"},
-		{findByImageFn("portainer/agent", "portainer/agent"), "findByImage"},
+		{findByImageFn("portainer/agent", "portainerci/agent"), "findByImage"},
 		{findByLogsFn("Starting Agent API server"), "findByLogs"},
 	}
 
