@@ -59,7 +59,7 @@ func findByImageFn(possibleImagePrefixes ...string) queryFn {
 
 		for _, container := range containers {
 			for _, possibleImage := range possibleImagePrefixes {
-				if container.Image == possibleImage {
+				if strings.HasPrefix(container.Image, possibleImage) {
 					return &container, nil
 				}
 			}
