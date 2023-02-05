@@ -40,7 +40,7 @@ func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, de
 		Str("image", imageName).
 		Msg("Starting update process")
 
-	podsQuery, err := cli.CoreV1().Pods(deployment.Namespace).List(ctx, metaV1.ListOptions{LabelSelector: fmt.Sprintf("app=%s", deployment.Name)})
+	podsQuery, err := cli.CoreV1().Pods(deployment.Namespace).List(ctx, metaV1.ListOptions{LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", deployment.Name)})
 	if err != nil {
 		return errors.WithMessage(err, "unable to list pods")
 	}
@@ -103,7 +103,7 @@ func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, de
 	}
 	newDeployment, err := cli.AppsV1().
 		Deployments(deployment.Namespace).
-		Patch(ctx, deployment.Name, types.JSONPatchType, json, metaV1.PatchOptions{})
+		Patch(ctx, deployment.Name, types.MergePatchType, json, metaV1.PatchOptions{})
 	if err != nil {
 		return errors.WithMessage(err, "unable to patch deployment")
 	}
