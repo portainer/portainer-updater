@@ -11,7 +11,6 @@ import (
 	"github.com/portainer/portainer-updater/dockerswarm"
 	"github.com/portainer/portainer-updater/kubernetes"
 	"github.com/rs/zerolog/log"
-	coreV1 "k8s.io/api/core/v1"
 )
 
 type EnvType string
@@ -62,15 +61,8 @@ func (r *Command) runKubernetes(ctx context.Context) error {
 		Str("deployment", deployment.Name).
 		Msg("Found deployment")
 
-	return kubernetes.Update(ctx, cli, r.Image, deployment,
-		func(containerSpc coreV1.Container) {
-			if r.License != "" {
-				containerSpc.Env = append(containerSpc.Env, coreV1.EnvVar{
-					Name:  "PORTAINER_LICENSE_KEY",
-					Value: r.License,
-				})
-			}
-		})
+	return kubernetes.Update(ctx, cli, r.Image, deployment, r.License)
+
 }
 
 func (r *Command) runStandalone(ctx context.Context) error {

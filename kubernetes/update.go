@@ -3,8 +3,6 @@ package kubernetes
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/pkg/errors"
@@ -18,109 +16,86 @@ import (
 )
 
 type (
-	templateSpec struct {
-		Containers []coreV1.Container `json:"containers"`
-	}
-	patchBodySpecTemplate struct {
-		Spec templateSpec `json:"spec"`
-	}
-	patchBodySpec struct {
-		Template patchBodySpecTemplate `json:"template"`
-	}
-	patchBody struct {
-		Spec patchBodySpec `json:"spec"`
+	jsonPatch struct {
+		Op    string      `json:"op"`
+		Path  string      `json:"path"`
+		Value interface{} `json:"value"`
 	}
 )
 
 var errUpdateFailure = errors.New("update failure")
 
-func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, deployment *appV1.Deployment, updateConfig func(containerSpc coreV1.Container)) error {
+func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, deployment *appV1.Deployment, licenseKey string) error {
 	log.Info().
 		Str("deploymentName", deployment.Name).
 		Str("image", imageName).
+		Str("license", licenseKey).
 		Msg("Starting update process")
 
-	podsQuery, err := cli.CoreV1().Pods(deployment.Namespace).List(ctx, metaV1.ListOptions{LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", deployment.Name)})
-	if err != nil {
-		return errors.WithMessage(err, "unable to list pods")
-	}
-
-	if len(podsQuery.Items) == 0 || len(podsQuery.Items[0].Spec.Containers) == 0 {
-		return errors.New("no pods found")
-	}
-
-	podContainer := podsQuery.Items[0].Spec.Containers[0]
-
-	// log.Debug().
-	// 	Str("image", imageName).
-	// 	Str("containerImage", podsQuery.Items[0].Spec.Containers[0].Image).
-	// 	Msg("Checking whether the latest image is available")
-
-	// imageUpToDate, err := pullImage(ctx, cli, imageName)
-	// if err != nil {
-	// 	log.Err(err).
-	// 		Msg("Unable to pull image")
-
-	// 	return errUpdateFailure
-	// }
-
-	// if deployment.Spec.TaskTemplate.ContainerSpec.Image == imageName && imageUpToDate {
-	// 	log.Info().
-	// 		Str("image", imageName).
-	// 		Str("deploymentName", deployment.ID).
-	// 		Msg("Image is already up to date, shutting down")
-
-	// 	return nil
-	// }
-
-	containerConfig := coreV1.Container{
-		Name:  podContainer.Name,
-		Image: imageName,
-		Env:   podContainer.Env,
-	}
-
-	if os.Getenv("SKIP_PULL") != "" {
-		containerConfig.ImagePullPolicy = coreV1.PullNever
-	}
-
-	updateConfig(containerConfig)
-
-	patchBody := patchBody{
-		Spec: patchBodySpec{
-			Template: patchBodySpecTemplate{
-				Spec: templateSpec{
-					Containers: []coreV1.Container{
-						containerConfig,
-					},
-				},
-			},
+	patch := []jsonPatch{
+		{
+			Op:    "replace",
+			Path:  "/spec/template/spec/containers/0/image",
+			Value: imageName,
 		},
 	}
 
-	json, err := json.Marshal(patchBody)
-	if err != nil {
-		return errors.WithMessage(err, "unable to marshal patch body")
+	if licenseKey != "" {
+		patch = append(patch, jsonPatch{
+			Op:   "add",
+			Path: "/spec/template/spec/containers/0/env",
+			Value: []coreV1.EnvVar{
+				{
+					Name:  "PORTAINER_LICENSE_KEY",
+					Value: licenseKey,
+				},
+			},
+		})
 	}
-	newDeployment, err := cli.AppsV1().
-		Deployments(deployment.Namespace).
-		Patch(ctx, deployment.Name, types.MergePatchType, json, metaV1.PatchOptions{})
+
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		return errors.WithMessage(err, "unable to marshal patch")
+	}
+
+	deployCli := cli.AppsV1().
+		Deployments(deployment.Namespace)
+
+	newDeployment, err := deployCli.
+		Patch(ctx, deployment.Name, types.JSONPatchType, patchBytes, metaV1.PatchOptions{})
 	if err != nil {
 		return errors.WithMessage(err, "unable to patch deployment")
 	}
-
-	// 	if len(updateResponse.Warnings) > 0 {
-	// 		log.Warn().
-	// 			Str("deploymentName", deployment.ID).
-	// 			Interface("warnings", updateResponse.Warnings).
-	// 			Msg("Warnings during deployment update")
-	// 	}
 
 	err = utils.WaitUntil(ctx, func() bool {
 		log.Debug().
 			Str("deploymentName", newDeployment.Name).
 			Msg("Waiting for deployment update to complete")
 
-		return newDeployment.Status.AvailableReplicas >= 1
+		i, err := deployCli.Watch(ctx, metaV1.ListOptions{
+			FieldSelector: "metadata.name=" + newDeployment.Name,
+		})
+		if err != nil {
+			log.Err(err).
+				Str("deploymentName", newDeployment.Name).
+				Msg("Unable to watch deployments")
+
+			return false
+		}
+
+		for event := range i.ResultChan() {
+			job, ok := event.Object.(*appV1.Deployment)
+			if !ok {
+				continue
+			}
+
+			if job.Status.ReadyReplicas > 1 {
+				return true
+			}
+		}
+
+		return false
+
 	}, 1*time.Minute, 5*time.Second)
 
 	if err != nil {
