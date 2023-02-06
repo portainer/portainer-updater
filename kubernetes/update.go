@@ -84,18 +84,27 @@ func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, de
 		}
 
 		for event := range i.ResultChan() {
-			job, ok := event.Object.(*appV1.Deployment)
+			deployment, ok := event.Object.(*appV1.Deployment)
 			if !ok {
 				continue
 			}
 
-			if job.Status.ReadyReplicas > 1 {
-				return true
+			for _, condition := range deployment.Status.Conditions {
+				if condition.Type == appV1.DeploymentReplicaFailure && condition.Status == coreV1.ConditionTrue {
+					log.Error().
+						Str("deploymentName", newDeployment.Name).
+						Str("reason", condition.Message).
+						Msg("Unable to wait for deployment update to complete")
+					return false
+				}
+
+				if condition.Type == appV1.DeploymentAvailable && condition.Status == coreV1.ConditionTrue {
+					return true
+				}
 			}
 		}
 
 		return false
-
 	}, 1*time.Minute, 5*time.Second)
 
 	if err != nil {
