@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -66,14 +67,13 @@ func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, de
 	if err != nil {
 		return errors.WithMessage(err, "unable to patch deployment")
 	}
-
 	err = utils.WaitUntil(ctx, func() bool {
 		log.Debug().
 			Str("deploymentName", newDeployment.Name).
 			Msg("Waiting for deployment update to complete")
 
 		i, err := deployCli.Watch(ctx, metaV1.ListOptions{
-			FieldSelector: "metadata.name=" + newDeployment.Name,
+			FieldSelector: fmt.Sprintf("metadata.id=%s", newDeployment.UID),
 		})
 		if err != nil {
 			log.Err(err).
