@@ -40,30 +40,7 @@ func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, de
 
 	var patch []jsonPatch
 	if licenseKey != "" {
-		licenseKeyEnvVar := coreV1.EnvVar{
-			Name:  "PORTAINER_LICENSE_KEY",
-			Value: licenseKey,
-		}
-
-		if deployment.Spec.Template.Spec.Containers[0].Env == nil {
-			patch = []jsonPatch{
-				{
-					Op:   "add",
-					Path: "/spec/template/spec/containers/0/env",
-					Value: []coreV1.EnvVar{
-						licenseKeyEnvVar,
-					},
-				},
-			}
-		} else {
-			patch = []jsonPatch{
-				{
-					Op:    "add",
-					Path:  "/spec/template/spec/containers/0/env/-",
-					Value: licenseKeyEnvVar,
-				},
-			}
-		}
+		patch = append(patch, createEnvVarPatch(licenseKey, deployment.Spec.Template.Spec.Containers[0].Env))
 	}
 
 	err := updateDeployment(ctx, deployCli, deployment.Name, imageName, patch)
@@ -92,6 +69,52 @@ func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, de
 		Msg("Update process completed")
 
 	return nil
+}
+
+func createEnvVarPatch(licenseKey string, envVars []coreV1.EnvVar) jsonPatch {
+	licenseKeyEnvVar := coreV1.EnvVar{
+		Name:  "PORTAINER_LICENSE_KEY",
+		Value: licenseKey,
+	}
+
+	if envVars == nil {
+		return jsonPatch{
+			Op:   "add",
+			Path: "/spec/template/spec/containers/0/env",
+			Value: []coreV1.EnvVar{
+				licenseKeyEnvVar,
+			},
+		}
+	}
+
+	index, found := Index(envVars, func(e coreV1.EnvVar) bool {
+		return e.Name == licenseKeyEnvVar.Name
+	})
+
+	if found {
+		return jsonPatch{
+			Op:    "replace",
+			Path:  fmt.Sprintf("/spec/template/spec/containers/0/env/%d", index),
+			Value: licenseKeyEnvVar,
+		}
+	}
+
+	return jsonPatch{
+		Op:    "add",
+		Path:  "/spec/template/spec/containers/0/env/-",
+		Value: licenseKeyEnvVar,
+	}
+
+}
+
+func Index[E any](slice []E, predicate func(E) bool) (int, bool) {
+	for i, v := range slice {
+		if predicate(v) {
+			return i, true
+		}
+	}
+
+	return -1, false
 }
 
 func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName, imageName string, morePatch []jsonPatch) error {
