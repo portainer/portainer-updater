@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -32,50 +33,55 @@ func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, de
 		Str("license", licenseKey).
 		Msg("Starting update process")
 
-	patch := []jsonPatch{
-		{
-			Op:    "replace",
-			Path:  "/spec/template/spec/containers/0/image",
-			Value: imageName,
-		},
-	}
-
-	if licenseKey != "" {
-		patch = append(patch, jsonPatch{
-			Op:   "add",
-			Path: "/spec/template/spec/containers/0/env",
-			Value: []coreV1.EnvVar{
-				{
-					Name:  "PORTAINER_LICENSE_KEY",
-					Value: licenseKey,
-				},
-			},
-		})
-	}
-
-	patchBytes, err := json.Marshal(patch)
-	if err != nil {
-		return errors.WithMessage(err, "unable to marshal patch")
-	}
+	originalImage := deployment.Spec.Template.Spec.Containers[0].Image
 
 	deployCli := cli.AppsV1().
 		Deployments(deployment.Namespace)
 
-	newDeployment, err := deployCli.
-		Patch(ctx, deployment.Name, types.JSONPatchType, patchBytes, metaV1.PatchOptions{})
-	if err != nil {
-		return errors.WithMessage(err, "unable to patch deployment")
+	var patch []jsonPatch
+	if licenseKey != "" {
+		licenseKeyEnvVar := coreV1.EnvVar{
+			Name:  "PORTAINER_LICENSE_KEY",
+			Value: licenseKey,
+		}
+
+		if deployment.Spec.Template.Spec.Containers[0].Env == nil {
+			patch = []jsonPatch{
+				{
+					Op:   "add",
+					Path: "/spec/template/spec/containers/0/env",
+					Value: []coreV1.EnvVar{
+						licenseKeyEnvVar,
+					},
+				},
+			}
+		} else {
+			patch = []jsonPatch{
+				{
+					Op:    "add",
+					Path:  "/spec/template/spec/containers/0/env/-",
+					Value: licenseKeyEnvVar,
+				},
+			}
+		}
 	}
 
-	log.Debug().
-		Str("deploymentName", newDeployment.Name).
-		Msg("Waiting for deployment update to complete")
-
-	err = waitForDeployment(ctx, deployCli, newDeployment)
+	err := updateDeployment(ctx, deployCli, deployment.Name, imageName, patch)
 	if err != nil {
 		log.Err(err).
 			Str("deploymentName", deployment.Name).
-			Msg("Unable to wait for deployment update to complete")
+			Msg("Unable to update deployment")
+
+		log.Info().
+			Str("deploymentName", deployment.Name).
+			Msg("Rolling back deployment")
+
+		err := updateDeployment(ctx, deployCli, deployment.Name, originalImage, nil)
+		if err != nil {
+			log.Err(err).
+				Str("deploymentName", deployment.Name).
+				Msg("Unable to rollback deployment")
+		}
 
 		return errUpdateFailure
 	}
@@ -88,16 +94,47 @@ func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, de
 	return nil
 }
 
-func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, newDeployment *appV1.Deployment) error {
+func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName, imageName string, morePatch []jsonPatch) error {
+	patch := append([]jsonPatch{
+		{
+			Op:    "replace",
+			Path:  "/spec/template/spec/containers/0/image",
+			Value: imageName,
+		},
+	}, morePatch...)
+
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		return errors.WithMessage(err, "unable to marshal patch")
+	}
+
+	newDeployment, err := deployCli.
+		Patch(ctx, deploymentName, types.JSONPatchType, patchBytes, metaV1.PatchOptions{})
+	if err != nil {
+		return errors.WithMessage(err, "unable to patch deployment")
+	}
+
+	log.Debug().
+		Str("deploymentName", deploymentName).
+		Msg("Waiting for deployment to complete")
+
+	return waitForDeployment(ctx, deployCli, newDeployment.Name, newDeployment.UID)
+}
+
+func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName string, uid types.UID) error {
+	// for some reason when we start, we have both updatedReplicas and readyReplicas set to 1
+	// we will wait 5 seconds before starting to watch
+	time.Sleep(5 * time.Second)
+
 	timeoutSeconds := int64(30)
 	watcher, err := deployCli.Watch(ctx, metaV1.ListOptions{
-		FieldSelector:  fmt.Sprintf("metadata.name=%s", newDeployment.Name),
+		FieldSelector:  fmt.Sprintf("metadata.name=%s", deploymentName),
 		TimeoutSeconds: &timeoutSeconds,
 	})
 	if err != nil {
 		log.Err(err).
-			Str("deploymentName", newDeployment.Name).
-			Str("deploymentUID", string(newDeployment.UID)).
+			Str("deploymentName", deploymentName).
+			Str("deploymentUID", string(uid)).
 			Msg("Unable to watch deployments")
 
 		return errors.WithMessage(err, "unable to watch deployments")
@@ -105,14 +142,14 @@ func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, ne
 
 	for event := range watcher.ResultChan() {
 		deployment, ok := event.Object.(*appV1.Deployment)
-		if !ok || deployment.UID != newDeployment.UID {
+		if !ok || deployment.UID != uid {
 			continue
 		}
 
 		for _, condition := range deployment.Status.Conditions {
 			if condition.Type == appV1.DeploymentReplicaFailure && condition.Status == coreV1.ConditionTrue {
 				log.Error().
-					Str("deploymentName", newDeployment.Name).
+					Str("deploymentName", deploymentName).
 					Str("reason", condition.Message).
 					Msg("Deployment replica failure")
 				return errors.New("deployment replica failure")
@@ -127,11 +164,10 @@ func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, ne
 			Int32("UpdatedReplicas", deployment.Status.UpdatedReplicas).
 			Msg("checking replicas condition")
 
-		if deployment.Status.ReadyReplicas > 1 {
+		if deployment.Status.UpdatedReplicas > 0 && deployment.Status.ReadyReplicas > 0 {
 			return nil
 		}
 	}
 
 	return errors.New("timeout")
-
 }
