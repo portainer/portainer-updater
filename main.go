@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/alecthomas/kong"
 	"github.com/portainer/portainer-updater/cli"
 	"github.com/portainer/portainer-updater/log"
@@ -21,5 +23,8 @@ func main() {
 	log.SetLoggingLevel(log.Level(cli.CLI.LogLevel))
 
 	err := cliCtx.Run()
-	cliCtx.FatalIfErrorf(err)
+	if err != nil {
+		cliCtx.FatalIfErrorf(err)
+	}
+	os.Exit(0)
 }
