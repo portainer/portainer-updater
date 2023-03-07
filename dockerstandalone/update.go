@@ -3,6 +3,8 @@ package dockerstandalone
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -154,11 +156,27 @@ func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) 
 		return false, nil
 	}
 
+	imagePullOptions := types.ImagePullOptions{}
+	if os.Getenv("REGISTRY_USED") != "" {
+		// Authenticate to the private registry
+		// ref@https://docs.docker.com/engine/api/sdk/examples/#pull-an-image-with-authentication
+		authConfig := types.AuthConfig{
+			Username: os.Getenv("REGISTRY_USERNAME"),
+			Password: os.Getenv("REGISTRY_PASSWORD"),
+		}
+
+		encodedJSON, err := json.Marshal(authConfig)
+		if err != nil {
+			return false, err
+		}
+		imagePullOptions.RegistryAuth = base64.URLEncoding.EncodeToString(encodedJSON)
+	}
+
 	log.Debug().
 		Str("image", imageName).
 		Msg("Pulling Docker image")
 
-	reader, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+	reader, err := dockerCli.ImagePull(ctx, imageName, imagePullOptions)
 	if err != nil {
 		log.Err(err).
 			Str("image", imageName).
