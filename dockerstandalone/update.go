@@ -158,18 +158,28 @@ func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) 
 
 	imagePullOptions := types.ImagePullOptions{}
 	if os.Getenv("REGISTRY_USED") != "" {
-		// Authenticate to the private registry
-		// ref@https://docs.docker.com/engine/api/sdk/examples/#pull-an-image-with-authentication
-		authConfig := types.AuthConfig{
-			Username: os.Getenv("REGISTRY_USERNAME"),
-			Password: os.Getenv("REGISTRY_PASSWORD"),
-		}
 
-		encodedJSON, err := json.Marshal(authConfig)
-		if err != nil {
-			return false, err
+		username := os.Getenv("REGISTRY_USERNAME")
+		password := os.Getenv("REGISTRY_PASSWORD")
+
+		if os.Getenv("REGISTRY_ECR_CERTIFICATE_ENABLED") != "" {
+			// login ECR registry
+			loginEcrRegistry(ctx, dockerCli, username, password)
+
+		} else {
+			// Authenticate to the private registry
+			// ref@https://docs.docker.com/engine/api/sdk/examples/#pull-an-image-with-authentication
+			authConfig := types.AuthConfig{
+				Username: username,
+				Password: password,
+			}
+
+			encodedJSON, err := json.Marshal(authConfig)
+			if err != nil {
+				return false, err
+			}
+			imagePullOptions.RegistryAuth = base64.URLEncoding.EncodeToString(encodedJSON)
 		}
-		imagePullOptions.RegistryAuth = base64.URLEncoding.EncodeToString(encodedJSON)
 	}
 
 	log.Debug().
