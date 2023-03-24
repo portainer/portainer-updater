@@ -19,9 +19,12 @@ func Update(ctx context.Context, nomadCli *api.Client, job *api.Job, task *api.T
 		Str("image", imageName).
 		Str("task", task.Name).
 		Str("schedule-id", scheduleId).
+		Msg("Updating Portainer agent")
+
+	log.Debug().
 		Interface("task config", task.Config).
 		Interface("task env", task.Env).
-		Msg("Updating Portainer agent")
+		Msg("Portainer agent configuration")
 
 	job.Update = api.DefaultUpdateStrategy()
 	task.Config["image"] = imageName
@@ -41,8 +44,23 @@ func Update(ctx context.Context, nomadCli *api.Client, job *api.Job, task *api.T
 		return errors.WithMessage(err, "failed to get allocations for job")
 	}
 
+	log.Info().
+		Int("allocation number", len(allocations)).
+		Str("job id", *job.ID).
+		Msg("Listing job allocations")
+
 	for _, allocation := range allocations {
 		if allocation.ClientStatus != api.AllocClientStatusPending {
+			if allocation.ClientStatus == api.AllocClientStatusRunning {
+				// There is a case that the status of the target allocation can change
+				// from Pending to Running before listing allocations
+				log.Info().
+					Str("allocation", allocation.ID).
+					Str("status", allocation.ClientStatus).
+					Msg("Allocation success")
+				return nil
+			}
+
 			continue
 		}
 
@@ -76,7 +94,12 @@ func Update(ctx context.Context, nomadCli *api.Client, job *api.Job, task *api.T
 
 			err = readLogs(nomadCli, allocation, task)
 			if err != nil {
-				return err
+				log.Info().
+					Err(err).
+					Msg("failed to read logs")
+
+				// suppress the read log error to avoid updater exit with non-0 status
+				continue
 			}
 
 			if allocation.ClientStatus == api.AllocClientStatusFailed {
