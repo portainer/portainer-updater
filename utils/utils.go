@@ -7,18 +7,18 @@ import (
 )
 
 func WaitUntil(ctx context.Context, condition func() bool, timeout, timeBetweenTries time.Duration) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(timeout):
-		return errors.New("timeout")
-	default:
-		if condition() {
-			return nil
+	for timeoutCh := time.After(timeout); ; {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeoutCh:
+			return errors.New("timeout")
+		default:
+			if condition() {
+				return nil
+			}
+
+			time.Sleep(timeBetweenTries)
 		}
-
-		time.Sleep(timeBetweenTries)
 	}
-
-	return WaitUntil(ctx, condition, timeout, timeBetweenTries)
 }

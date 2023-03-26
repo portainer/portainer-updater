@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/portainer/portainer-updater/dockerstandalone"
 	"github.com/portainer/portainer-updater/dockerswarm"
+	"github.com/portainer/portainer-updater/kubernetes"
 	"github.com/rs/zerolog/log"
 )
 
@@ -16,11 +17,12 @@ type EnvType string
 
 const (
 	EnvTypeDockerStandalone EnvType = "standalone"
-	EnvTypeNomad            EnvType = "nomad"
+	EnvTypeKubernetes       EnvType = "kubernetes"
+	EnvTypeSwarm            EnvType = "swarm"
 )
 
 type Command struct {
-	EnvType EnvType `help:"The environment type" default:"standalone" enum:"standalone,swarm"`
+	EnvType EnvType `help:"The environment type" default:"standalone" enum:"standalone,swarm,kubernetes"`
 	License string  `help:"License key to use for Portainer EE"`
 	Image   string  `help:"Image of portainer to upgrade to. e.g. portainer/portainer-ee:latest" name:"image" default:"portainer/portainer-ee:latest"`
 }
@@ -29,13 +31,38 @@ func (r *Command) Run() error {
 	ctx := context.Background()
 
 	switch r.EnvType {
-	case "standalone":
+	case EnvTypeDockerStandalone:
 		return r.runStandalone(ctx)
-	case "swarm":
+	case EnvTypeSwarm:
 		return r.runSwarm(ctx)
+	case EnvTypeKubernetes:
+		return r.runKubernetes(ctx)
 	}
 
 	return errors.Errorf("unknown environment type: %s", r.EnvType)
+}
+
+func (r *Command) runKubernetes(ctx context.Context) error {
+	cli, err := kubernetes.GetClient()
+	if err != nil {
+		return errors.WithMessage(err, "failed getting kubernetes client")
+	}
+
+	log.Info().
+		Str("image", r.Image).
+		Msg("Updating Portainer on kubernetes environment")
+
+	deployment, err := kubernetes.FindPortainerDeployment(ctx, cli)
+	if err != nil {
+		return errors.WithMessage(err, "failed finding deployment")
+	}
+
+	log.Debug().
+		Str("deployment", deployment.Name).
+		Msg("Found deployment")
+
+	return kubernetes.Update(ctx, cli, r.Image, deployment, r.License)
+
 }
 
 func (r *Command) runStandalone(ctx context.Context) error {
