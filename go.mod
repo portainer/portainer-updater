@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/containerd/containerd v1.6.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

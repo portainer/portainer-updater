@@ -2,7 +2,10 @@ package portainer
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
+	"github.com/Masterminds/semver"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
@@ -30,6 +33,8 @@ type Command struct {
 func (r *Command) Run() error {
 	ctx := context.Background()
 
+	r.validateImageWithLicense()
+
 	switch r.EnvType {
 	case EnvTypeDockerStandalone:
 		return r.runStandalone(ctx)
@@ -40,6 +45,53 @@ func (r *Command) Run() error {
 	}
 
 	return errors.Errorf("unknown environment type: %s", r.EnvType)
+}
+
+func (r *Command) validateImageWithLicense() {
+	if !strings.HasPrefix(r.License, "3-") {
+		log.Debug().
+			Str("license", r.License).
+			Msg("License is a valid type 2 Portainer EE license, leaving it as is")
+		return
+	}
+
+	parts := strings.Split(r.Image, ":")
+	if len(parts) != 2 {
+		log.Debug().
+			Str("imageName", r.Image).
+			Msg("Image name is not a standard image (image:tag), leaving it as is")
+		return
+	}
+
+	imageName := parts[0]
+	tag := parts[1]
+
+	if imageName != "portainer-ee" {
+		log.Debug().
+			Str("imageName", r.Image).
+			Msg("Image name is not portainer-ee, leaving it as is")
+		return
+	}
+
+	requiredVersion, err := semver.NewVersion(tag)
+	if err != nil {
+		log.Debug().
+			Err(err).
+			Str("tag", tag).
+			Msg("Tag is not a valid semver, leaving it as is")
+		return
+	}
+
+	minVersion := "2.18.4"
+	if requiredVersion.GreaterThan(semver.MustParse(minVersion)) {
+		log.Debug().
+			Str("tag", tag).
+			Str("minVersion", minVersion).
+			Msg("Tag is higher than minimum version, leaving it as is")
+		return
+	}
+
+	r.Image = fmt.Sprintf("%s:%s", imageName, minVersion)
 }
 
 func (r *Command) runKubernetes(ctx context.Context) error {
