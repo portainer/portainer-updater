@@ -56,7 +56,7 @@ func validateImageWithLicense(license, image string) string {
 	log.Info().
 		Str("tag", tag).
 		Str("minVersion", minVersion).
-		Msg("Tag is lower than minimum version, updating version to 2.18.4")
+		Msg("Tag is lower than minimum version for this license type, updating version to 2.18.4")
 
 	return fmt.Sprintf("%s:%s", imageName, minVersion)
 }
