@@ -141,9 +141,10 @@ func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, dep
 		Str("deploymentName", deploymentName).
 		Msg("Waiting for deployment to complete")
 
+	err = nil
 	numRetries := 1
 	for numRetries < 10 {
-		err := waitForDeployment(ctx, deployCli, newDeployment.Name, newDeployment.UID)
+		err = waitForDeployment(ctx, deployCli, newDeployment.Name, newDeployment.UID)
 		if err == nil {
 			return nil
 		}
@@ -151,11 +152,8 @@ func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, dep
 		log.Warn().Err(err).Int("number of retries", numRetries).Msg("Deployment not ready yet, retrying")
 		numRetries++
 	}
-	if numRetries == 10 {
-		return errors.New("Something went wrong, deployment not ready after 10 retries")
-	}
 
-	return nil
+	return errors.WithMessage(err, "Something went wrong, deployment not ready after 10 retries")
 }
 
 func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName string, uid types.UID) error {
