@@ -141,19 +141,7 @@ func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, dep
 		Str("deploymentName", deploymentName).
 		Msg("Waiting for deployment to complete")
 
-	err = nil
-	numRetries := 1
-	for numRetries < 10 {
-		err = waitForDeployment(ctx, deployCli, newDeployment.Name, newDeployment.UID)
-		if err == nil {
-			return nil
-		}
-
-		log.Warn().Err(err).Int("number of retries", numRetries).Msg("Deployment not ready yet, retrying")
-		numRetries++
-	}
-
-	return errors.WithMessage(err, "Something went wrong, deployment not ready after 10 retries")
+	return waitForDeployment(ctx, deployCli, newDeployment.Name, newDeployment.UID)
 }
 
 func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName string, uid types.UID) error {
@@ -161,7 +149,7 @@ func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, de
 	// we will wait 5 seconds before starting to watch
 	time.Sleep(5 * time.Second)
 
-	timeoutSeconds := int64(30)
+	timeoutSeconds := int64(300)
 	watcher, err := deployCli.Watch(ctx, metaV1.ListOptions{
 		FieldSelector:  fmt.Sprintf("metadata.name=%s", deploymentName),
 		TimeoutSeconds: &timeoutSeconds,
