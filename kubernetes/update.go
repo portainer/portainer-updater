@@ -32,7 +32,6 @@ func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, de
 	log.Info().
 		Str("deploymentName", deployment.Name).
 		Str("image", imageName).
-		Str("license", licenseKey).
 		Msg("Starting update process")
 
 	originalImage := deployment.Spec.Template.Spec.Containers[0].Image
