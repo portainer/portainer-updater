@@ -30,6 +30,8 @@ type Command struct {
 func (r *Command) Run() error {
 	ctx := context.Background()
 
+	r.Image = validateImageWithLicense(r.License, r.Image)
+
 	switch r.EnvType {
 	case EnvTypeDockerStandalone:
 		return r.runStandalone(ctx)

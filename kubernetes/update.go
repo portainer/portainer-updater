@@ -24,13 +24,14 @@ type (
 	}
 )
 
+const fiveMinutes = int64(300)
+
 var errUpdateFailure = errors.New("update failure")
 
 func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, deployment *appV1.Deployment, licenseKey string) error {
 	log.Info().
 		Str("deploymentName", deployment.Name).
 		Str("image", imageName).
-		Str("license", licenseKey).
 		Msg("Starting update process")
 
 	originalImage := deployment.Spec.Template.Spec.Containers[0].Image
@@ -149,7 +150,7 @@ func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, de
 	// we will wait 5 seconds before starting to watch
 	time.Sleep(5 * time.Second)
 
-	timeoutSeconds := int64(30)
+	timeoutSeconds := fiveMinutes
 	watcher, err := deployCli.Watch(ctx, metaV1.ListOptions{
 		FieldSelector:  fmt.Sprintf("metadata.name=%s", deploymentName),
 		TimeoutSeconds: &timeoutSeconds,
