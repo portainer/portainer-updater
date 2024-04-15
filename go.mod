@@ -2,7 +2,7 @@ module github.com/portainer/portainer-updater
 
 go 1.21
 
-toolchain go1.21.5
+toolchain go1.21.9
 
 require (
 	github.com/Masterminds/semver v1.5.0
