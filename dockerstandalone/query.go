@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
@@ -24,7 +25,7 @@ func findByLabelFn(label string) queryFn {
 		filters.Add("status", "running")
 		filters.Add("label", label)
 
-		containers, err := dockerCli.ContainerList(ctx, types.ContainerListOptions{
+		containers, err := dockerCli.ContainerList(ctx, container.ListOptions{
 			Filters: filters,
 		})
 		if err != nil {
@@ -50,7 +51,7 @@ func findByImageFn(possibleImagePrefixes ...string) queryFn {
 
 		// not using the ancestor filter because it looks for latest tag
 
-		containers, err := dockerCli.ContainerList(ctx, types.ContainerListOptions{
+		containers, err := dockerCli.ContainerList(ctx, container.ListOptions{
 			Filters: filters,
 		})
 		if err != nil {
@@ -75,15 +76,15 @@ func findByLogsFn(log string) queryFn {
 		filters := filters.NewArgs()
 		filters.Add("status", "running")
 
-		containers, err := dockerCli.ContainerList(ctx, types.ContainerListOptions{
+		containers, err := dockerCli.ContainerList(ctx, container.ListOptions{
 			Filters: filters,
 		})
 		if err != nil {
 			return nil, errors.WithMessage(err, "unable to list containers")
 		}
 
-		for _, container := range containers {
-			logs, err := dockerCli.ContainerLogs(ctx, container.ID, types.ContainerLogsOptions{
+		for _, c := range containers {
+			logs, err := dockerCli.ContainerLogs(ctx, c.ID, container.LogsOptions{
 				ShowStdout: true,
 				ShowStderr: true,
 			})
@@ -95,7 +96,7 @@ func findByLogsFn(log string) queryFn {
 
 			for scanner.Scan() {
 				if strings.Contains(scanner.Text(), log) {
-					return &container, nil
+					return &c, nil
 				}
 			}
 

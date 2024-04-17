@@ -13,7 +13,9 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -123,7 +125,7 @@ func cleanupContainerAndError(ctx context.Context, dockerCli *client.Client, old
 		Msg("An error occurred during the update process - removing newly created container")
 
 	// should restart old container
-	err := dockerCli.ContainerStart(ctx, oldContainerId, types.ContainerStartOptions{})
+	err := dockerCli.ContainerStart(ctx, oldContainerId, container.StartOptions{})
 	if err != nil {
 		log.Err(err).
 			Str("containerId", oldContainerId).
@@ -133,7 +135,7 @@ func cleanupContainerAndError(ctx context.Context, dockerCli *client.Client, old
 	if newContainerID != "" {
 		printLogsToStdout(ctx, dockerCli, newContainerID)
 
-		err = dockerCli.ContainerRemove(ctx, newContainerID, types.ContainerRemoveOptions{Force: true})
+		err = dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true})
 		if err != nil {
 			log.Err(err).
 				Msg("Unable to remove temporary container, please remove it manually")
@@ -156,11 +158,11 @@ func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) 
 		return false, nil
 	}
 
-	imagePullOptions := types.ImagePullOptions{}
+	imagePullOptions := image.PullOptions{}
 	if os.Getenv("REGISTRY_USED") != "" {
 		// Authenticate to the private registry
 		// ref@https://docs.docker.com/engine/api/sdk/examples/#pull-an-image-with-authentication
-		authConfig := types.AuthConfig{
+		authConfig := registry.AuthConfig{
 			Username: os.Getenv("REGISTRY_USERNAME"),
 			Password: os.Getenv("REGISTRY_PASSWORD"),
 		}
@@ -247,7 +249,7 @@ func tryRemoveOldContainer(ctx context.Context, dockerCli *client.Client, oldCon
 		Msg("Removing old container")
 
 	// remove old container
-	err := dockerCli.ContainerRemove(ctx, oldContainerId, types.ContainerRemoveOptions{Force: true})
+	err := dockerCli.ContainerRemove(ctx, oldContainerId, container.RemoveOptions{Force: true})
 	if err != nil {
 		log.Warn().Err(err).Msg("Unable to remove old container")
 	}
@@ -324,12 +326,12 @@ func startContainer(ctx context.Context, dockerCli *client.Client, oldContainerI
 		Str("containerId", newContainerID).
 		Msg("Starting new container")
 
-	err := dockerCli.ContainerStop(ctx, oldContainerID, nil)
+	err := dockerCli.ContainerStop(ctx, oldContainerID, container.StopOptions{})
 	if err != nil {
 		return errors.WithMessage(err, "Unable to stop old container")
 	}
 
-	err = dockerCli.ContainerStart(ctx, newContainerID, types.ContainerStartOptions{})
+	err = dockerCli.ContainerStart(ctx, newContainerID, container.StartOptions{})
 	if err != nil {
 		return errors.WithMessage(err, "Unable to start new container")
 	}
@@ -371,7 +373,7 @@ func printLogsToStdout(ctx context.Context, dockerCli *client.Client, containerI
 		Str("containerId", containerID).
 		Msg("Printing container logs to stdout")
 
-	reader, err := dockerCli.ContainerLogs(ctx, containerID, types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true})
+	reader, err := dockerCli.ContainerLogs(ctx, containerID, container.LogsOptions{ShowStdout: true, ShowStderr: true})
 	if err != nil {
 		log.Error().Err(err).Msg("Unable to get container logs")
 		return
