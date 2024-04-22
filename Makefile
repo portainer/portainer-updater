@@ -31,5 +31,8 @@ image: build
 image_release: release
 	docker build -f $(dockerfile) -t $(image_release):$(tag) --build-arg GIT_COMMIT=$(GIT_COMMIT) .
 
+tidy: 
+	go mod tidy
+
 clean:
 	rm -rf $(dist)/*
