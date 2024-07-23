@@ -90,18 +90,30 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 	healthy, err := monitorHealth(ctx, dockerCli, newContainerID)
 	if err != nil {
 		log.Err(err).
+			Str("new_container_id", newContainerID).
+			Str("old_container_id", oldContainerId).
+			Str("context", "UpdateInProgress").
 			Msg("Unable to monitor container health")
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
 	}
 
 	if !healthy {
+		log.Debug().
+			Str("new_container_id", newContainerID).
+			Str("old_container_id", oldContainerId).
+			Str("context", "UpdateInProgress").
+			Msg("The container is not healthy. Return")
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
 	}
 
 	log.Info().
-		Msg("New container is healthy. The old  will be removed.")
+		Msg("New container is healthy. The old will be removed.")
 
 	tryRemoveOldContainer(ctx, dockerCli, oldContainer.ID)
+
+	log.Debug().
+		Str("old_container_id", oldContainer.ID).
+		Msg("Old container is removed")
 
 	// rename new container to old container name
 	err = dockerCli.ContainerRename(ctx, newContainerID, oldContainerName)
@@ -285,6 +297,10 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 
 	tries := 5
 	for i := 0; i < tries; i++ {
+		log.Debug().Int("retry_time", i+1).
+			Str("container_state_health_status", container.State.Health.Status).
+			Str("context", "MonitorHealthStatus").
+			Msg("Updater monitors health status")
 
 		if container.State.Health.Status == "healthy" {
 			return true, nil

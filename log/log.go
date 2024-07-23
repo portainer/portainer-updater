@@ -24,19 +24,20 @@ const (
 )
 
 // ConfigureLogger configures the logger
-func ConfigureLogger(pretty bool) {
+func ConfigureLogger(pretty bool, file *os.File) {
 	zerolog.ErrorStackFieldName = "stack_trace"
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	stdlog.SetFlags(0)
-	stdlog.SetOutput(log.Logger)
 
-	log.Logger = log.Logger.With().Caller().Stack().Logger()
+	log.Logger = zerolog.New(file).With().Timestamp().Logger()
 
-	if pretty {
-		log.Logger = log.Logger.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	}
+	// log.Logger = log.Logger.With().Caller().Stack().Logger()
+
+	// if pretty {
+	// 	log.Logger = log.Logger.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	// }
 }
 
 // SetLoggingLevel sets the logging level

@@ -19,11 +19,19 @@ func main() {
 			Summary: true,
 		}))
 
-	log.ConfigureLogger(cli.CLI.PrettyLog)
+	file, err := os.OpenFile("/tmp/updater.log",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		0664,
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	log.ConfigureLogger(cli.CLI.PrettyLog, file)
 	log.SetLoggingLevel(log.Level(cli.CLI.LogLevel))
 
-	err := cliCtx.Run()
-	if err != nil {
+	if err := cliCtx.Run(); err != nil {
 		cliCtx.FatalIfErrorf(err)
 	}
 	os.Exit(0)
