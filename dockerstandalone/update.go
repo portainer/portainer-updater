@@ -74,7 +74,31 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 	newContainerID, err := createContainer(ctx, dockerCli, imageName, tempContainerName, oldContainer, updateConfig)
 	if err != nil {
 		log.Err(err).
+			Str("image_name", imageName).
+			Str("tempory_container_name", tempContainerName).
+			Str("old_container", oldContainerId).
+			Str("new_container_id", newContainerID).
+			Str("context", "UpdaterCreatesNewAgentContainer").
 			Msg("Unable to create container")
+
+		containers, err := dockerCli.ContainerList(ctx, container.ListOptions{All: true})
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("containerId", oldContainerId).
+				Msg("Unable to list all containers")
+
+			return errUpdateFailure
+		}
+
+		for _, container := range containers {
+			log.Info().
+				Strs("container_name", container.Names).
+				Str("container_id", container.ID).
+				Str("container_status", container.Status).
+				Str("context", "UpdaterListsContainers").
+				Msg("Updater failed to list containers")
+		}
 
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
 	}
@@ -136,22 +160,23 @@ func cleanupContainerAndError(ctx context.Context, dockerCli *client.Client, old
 	log.Debug().
 		Msg("An error occurred during the update process - removing newly created container")
 
+	log.Debug().Msg("skip to restart old container")
 	// should restart old container
-	err := dockerCli.ContainerStart(ctx, oldContainerId, container.StartOptions{})
-	if err != nil {
-		log.Err(err).
-			Str("containerId", oldContainerId).
-			Msg("Unable to restart container, please restart it manually")
-	}
+	// err := dockerCli.ContainerStart(ctx, oldContainerId, container.StartOptions{})
+	// if err != nil {
+	// 	log.Err(err).
+	// 		Str("containerId", oldContainerId).
+	// 		Msg("Unable to restart container, please restart it manually")
+	// }
 
 	if newContainerID != "" {
 		printLogsToStdout(ctx, dockerCli, newContainerID)
 
-		err = dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true})
-		if err != nil {
-			log.Err(err).
-				Msg("Unable to remove temporary container, please remove it manually")
-		}
+		log.Debug().Msg("skip to remove the new container")
+		// if err := dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true}); err != nil {
+		// 	log.Err(err).
+		// 		Msg("Unable to remove temporary container, please remove it manually")
+		// }
 	}
 
 	return errUpdateFailure
@@ -364,6 +389,12 @@ func createContainer(ctx context.Context, dockerCli *client.Client, imageName, t
 	containerConfigCopy, networks, networkConfig := copyContainerConfig(imageName, oldContainer.Config, oldContainer.NetworkSettings.Networks)
 
 	updateConfig(containerConfigCopy)
+
+	log.Debug().
+		Str("update_id", containerConfigCopy.Labels["io.portainer.update.scheduleId"]).
+		Strs("cmds", containerConfigCopy.Cmd).
+		Str("temporary_container_name", tempContainerName).
+		Msg("Copied container config")
 
 	newContainer, err := dockerCli.ContainerCreate(ctx,
 		containerConfigCopy,
