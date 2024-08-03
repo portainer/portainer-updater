@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -29,7 +30,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		Str("image", imageName).
 		Msg("Starting update process")
 
-		// We look for the existing container to copy its configuration
+	// We look for the existing container to copy its configuration
 	log.Debug().
 		Str("containerId", oldContainerId).
 		Msg("Looking for container")
@@ -67,9 +68,11 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 	}
 
 	oldContainerName := strings.TrimPrefix(oldContainer.Name, "/")
+	log.Info().Str("old_container_name", oldContainerName).Msg("retrieving old container name")
 
 	// We create the new container
 	tempContainerName := buildContainerName(oldContainerName)
+	log.Info().Str("temporary_container_name", tempContainerName).Msg("creating new container")
 
 	newContainerID, err := createContainer(ctx, dockerCli, imageName, tempContainerName, oldContainer, updateConfig)
 	if err != nil {
@@ -81,28 +84,12 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 			Str("context", "UpdaterCreatesNewAgentContainer").
 			Msg("Unable to create container")
 
-		containers, err := dockerCli.ContainerList(ctx, container.ListOptions{All: true})
-		if err != nil {
-			log.Error().
-				Err(err).
-				Str("containerId", oldContainerId).
-				Msg("Unable to list all containers")
-
-			return errUpdateFailure
-		}
-
-		for _, container := range containers {
-			log.Info().
-				Strs("container_name", container.Names).
-				Str("container_id", container.ID).
-				Str("container_status", container.Status).
-				Str("context", "UpdaterListsContainers").
-				Msg("Updater failed to list containers")
-		}
-
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
 	}
 
+	log.Info().Str("old_container_id", oldContainer.ID).
+		Str("new_container_id", newContainerID).
+		Msg("will start container")
 	err = startContainer(ctx, dockerCli, oldContainer.ID, newContainerID)
 	if err != nil {
 		log.Err(err).
@@ -111,6 +98,10 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
 	}
 
+	log.Info().
+		Str("new_container_id", newContainerID).
+		Str("old_container_id", oldContainerId).
+		Msg("will monitor container health")
 	healthy, err := monitorHealth(ctx, dockerCli, newContainerID)
 	if err != nil {
 		log.Err(err).
@@ -162,21 +153,21 @@ func cleanupContainerAndError(ctx context.Context, dockerCli *client.Client, old
 
 	log.Debug().Msg("skip to restart old container")
 	// should restart old container
-	// err := dockerCli.ContainerStart(ctx, oldContainerId, container.StartOptions{})
-	// if err != nil {
-	// 	log.Err(err).
-	// 		Str("containerId", oldContainerId).
-	// 		Msg("Unable to restart container, please restart it manually")
-	// }
+	err := dockerCli.ContainerStart(ctx, oldContainerId, container.StartOptions{})
+	if err != nil {
+		log.Err(err).
+			Str("containerId", oldContainerId).
+			Msg("Unable to restart container, please restart it manually")
+	}
 
 	if newContainerID != "" {
 		printLogsToStdout(ctx, dockerCli, newContainerID)
 
 		log.Debug().Msg("skip to remove the new container")
-		// if err := dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true}); err != nil {
-		// 	log.Err(err).
-		// 		Msg("Unable to remove temporary container, please remove it manually")
-		// }
+		if err := dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true}); err != nil {
+			log.Err(err).
+				Msg("Unable to remove temporary container, please remove it manually")
+		}
 	}
 
 	return errUpdateFailure
@@ -192,6 +183,7 @@ func buildContainerName(containerName string) string {
 
 func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) (bool, error) {
 	if os.Getenv("SKIP_PULL") != "" {
+		simPullImageSleep()
 		return false, nil
 	}
 
@@ -309,6 +301,10 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 
 	if container.State.Health == nil {
 		if container.State.Status == "exited" {
+			log.Info().
+				Str("containerId", containerId).
+				Str("status", container.State.Status).
+				Msg("monitorHealth found container exited unexpectedly")
 			return false, errors.New("Container exited unexpectedly")
 		}
 
@@ -433,4 +429,22 @@ func printLogsToStdout(ctx context.Context, dockerCli *client.Client, containerI
 		log.Error().Err(err).Msg("Unable to print container logs")
 	}
 
+}
+
+func simPullImageSleep() {
+	rand.Seed(time.Now().UnixNano())
+
+	// Define the minimum and maximum durations in seconds
+	minDuration := 2*60 + 50 // 2 minutes 50 seconds in seconds
+	maxDuration := 4 * 60    // 4 minutes in seconds
+
+	// Generate a random duration within the range
+	randomDuration := time.Duration(rand.Intn(maxDuration-minDuration+1)+minDuration) * time.Second
+
+	// Print the random duration for reference
+	log.Info().Dur("simulate_pull_image_sleep", randomDuration).
+		Msg("simulate sleep")
+
+	// Sleep for the random duration
+	time.Sleep(randomDuration)
 }

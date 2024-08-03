@@ -31,7 +31,7 @@ func ConfigureLogger(pretty bool, file *os.File) {
 
 	stdlog.SetFlags(0)
 
-	log.Logger = zerolog.New(file).With().Timestamp().Logger()
+	log.Logger = zerolog.New(file).With().Caller().Stack().Logger()
 
 	// log.Logger = log.Logger.With().Caller().Stack().Logger()
 
