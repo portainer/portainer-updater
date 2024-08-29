@@ -19,6 +19,10 @@ jobs:
       - name: checkout code
         uses: actions/checkout@v2
       # https://github.com/docker/setup-qemu-action
+      - name: "[preparation] set up golang"
+        uses: actions/setup-go@v5.0.0
+        with:
+          go-version-file: go.mod
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       # https://github.com/docker/setup-buildx-action
