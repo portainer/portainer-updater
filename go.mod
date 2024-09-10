@@ -1,11 +1,11 @@
 module github.com/portainer/portainer-updater
 
-go 1.22.6
+go 1.22.7
 
 require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/alecthomas/kong v0.5.0
-	github.com/docker/docker v26.0.1+incompatible
+	github.com/docker/docker v26.1.5+incompatible
 	github.com/hashicorp/nomad/api v0.0.0-20221020074335-1c9b4e398dd2
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.28.0
