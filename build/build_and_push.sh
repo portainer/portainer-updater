@@ -32,7 +32,7 @@ docker_image_build_and_push()
       build_args+=(--build-arg OSVERSION=1809)
   fi
 
-  docker buildx build --push -f ${dockerfile} "${build_args[@]}" --platform "${os}/${arch}" --tag "${repo}:${tag}-${os}-${arch}" .
+  docker buildx build --push -f ${dockerfile} "${build_args[@]}" --attest type=sbom,generator=docker/scout-sbom-indexer:latest --attest type=provenance,mode=max --platform "${os}/${arch}" --tag "${repo}:${tag}-${os}-${arch}" .
 }
 
 docker_manifest_create_and_push()
