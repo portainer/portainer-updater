@@ -18,29 +18,29 @@ jobs:
     steps:
       - name: checkout code
         uses: actions/checkout@v2
-      # https://github.com/docker/setup-qemu-action
+
       - name: "[preparation] set up golang"
         uses: actions/setup-go@v5.0.0
         with:
           go-version-file: go.mod
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
-      # https://github.com/docker/setup-buildx-action
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
         with:
-          driver-opts: image=moby/buildkit:v0.10.6
-      - uses: actions/setup-go@v3
-        with:
-          go-version: "1.22.5"
+          driver-opts: image=moby/buildkit:v0.16.0
+
       - name: login to docker hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: build the image to portainer ci with PR number
+      - name: "build the image to portainer ci with PR number (portainerci/portainer-updater:pr$GITHUB_PR_NUMBER)"
         if: ${{ github.event.pull_request.number != '' }}
         run: |
           "${GITHUB_WORKSPACE}/build/build_and_push.sh" portainerci pr$GITHUB_PR_NUMBER
-      - name: build the image to portainer ci ( Develop Latest )
+
+      - name: "build the image to portainer ci (portainerci/portainer-updater:develop)"
         if: ${{ github.ref == 'refs/heads/develop' }}
         run: |
           "${GITHUB_WORKSPACE}/build/build_and_push.sh" portainerci develop
