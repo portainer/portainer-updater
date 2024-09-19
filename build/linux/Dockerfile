@@ -1,6 +1,6 @@
 ARG GIT_COMMIT=unspecified
 
-FROM alpine:3.6 as base
+FROM alpine:3.6 AS base
 RUN apk add -U --no-cache ca-certificates
 
 
