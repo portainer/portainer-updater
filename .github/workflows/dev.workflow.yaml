@@ -16,19 +16,19 @@ jobs:
     environment:
       name: staging
     steps:
-      - name: checkout code
-        uses: actions/checkout@v2
+      - name: "[preparation] checkout"
+        uses: actions/checkout@v4.1.1
 
       - name: "[preparation] set up golang"
         uses: actions/setup-go@v5.0.0
         with:
           go-version-file: go.mod
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+      - name: "[preparation] set up qemu"
+        uses: docker/setup-qemu-action@v3.2.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v3.6.1
         with:
           driver-opts: image=moby/buildkit:v0.10.6
 
