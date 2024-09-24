@@ -4,10 +4,20 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - develop
+      - 'develop'
+      - 'release/*'
   pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
     branches:
-      - develop
+      - 'develop'
+      - 'release/*'
+      - 'feat/*'
+      - 'fix/*'
+      - 'refactor/*'
 
 env:
   DOCKER_HUB_REPO: portainerci/portainer-updater
@@ -126,6 +136,6 @@ jobs:
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.DOCKER_HUB_REPO }}@sha256:%s ' *)          
       
-      - name: Inspect image
+      - name: "[validate] inspect image"
         run: |
           docker buildx imagetools inspect ${{ env.DOCKER_HUB_REPO }}:${{ steps.meta.outputs.version }}  
