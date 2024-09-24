@@ -1,11 +1,128 @@
 name: portainer-updater
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+
+env:
+  DOCKER_HUB_REPO: portainerci/portainer-updater
 
 jobs:
   build_images:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config:
+          - { platform: linux, arch: amd64, version: "" }
+          - { platform: linux, arch: arm64, version: "" }
+          - { platform: linux, arch: arm, version: "" }
+          - { platform: linux, arch: ppc64le, version: "" }
+          - { platform: windows, arch: amd64, version: 1809 }
+          - { platform: windows, arch: amd64, version: ltsc2022 }
     steps:
-      - name: "placeholder"
-        run: echo "placeholder workflow"
+      - name: "[preparation] checkout"
+        uses: actions/checkout@v4.1.1
+
+      - name: "[preparation] set up qemu"
+        uses: docker/setup-qemu-action@v3.2.0
+
+      - name: "[preparation] set up docker context for buildx"
+        run: docker context create builders
+
+      - name: "[preparation] set up docker buildx"
+        uses: docker/setup-buildx-action@v3.6.1
+        with:
+          endpoint: builders
+          driver-opts: image=moby/buildkit:v0.16.0
+          platforms: linux/amd64,linux/arm64,linux/arm,linux/ppc64le
+
+      - name: "[preparation] docker login"
+        uses: docker/login-action@v3.3.0
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: '[preparation] set the container image tag'
+        run: |
+          # set the container image tag suffix
+          TAG_SUFFIX="${{ matrix.platform }}${{ matrix.version }}-${{ matrix.arch }}"
+
+          # set the container image tag prefix
+          if [[ "${GITHUB_REF_NAME}" =~ ^release/.*$ ]]; then
+            # use the release branch name as the tag for release branches
+            # for instance, release/2.19 becomes 2.19
+            echo TAG_PREFIX=$(echo $GITHUB_REF_NAME | cut -d "/" -f 2) >> $GITHUB_ENV
+          elif [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
+            # use pr${{ github.event.number }} as the tag for pull requests
+            # for instance, pr123
+            echo TAG_PREFIX="pr${{ github.event.number }}" >> $GITHUB_ENV
+          else
+            # replace / with - in the branch name
+            # for instance, feature/1.0.0 -> feature-1.0.0
+            echo TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g') >> $GITHUB_ENV
+          fi
+ 
+          # set the container image tag
+          echo "CONTAINER_IMAGE_TAG=${TAG_PREFIX}-${TAG_SUFFIX}" >> $GITHUB_ENV
+
+      - name: "build and push images - linux"
+        if: ${{ matrix.config.platform == 'linux' }}
+        uses: docker/build-push-action@v6.7.0
+        with:
+          context: .
+          tags: ${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}
+          build-args: |
+            GIT_COMMIT=$(git log -1 --format=%h)
+          platforms: ${{ matrix.config.platform }}/${{ matrix.config.arch }}
+          sbom: true
+          provenance: true
+          push: true
+
+      - name: "build and push images - windows"
+        if: ${{ matrix.config.platform == 'windows' }}
+        uses: docker/build-push-action@v6.7.0
+        with:
+          context: .
+          tags: ${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}
+          build-args: |
+            GIT_COMMIT=$(git log -1 --format=%h)
+            OSVERSION=${{ matrix.config.version }}
+          platforms: ${{ matrix.config.platform }}/${{ matrix.config.arch }}
+          sbom: true
+          provenance: true
+          push: true
+
+  build_manifests:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    needs: [build_images]
+    steps:
+      - name: '[preparation] docker login'
+        uses: docker/login-action@v3.0.0
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: '[preparation] set up docker context for buildx'
+        run: docker version && docker context create builders
+
+      - name: '[preparation] set up docker buildx'
+        uses: docker/setup-buildx-action@v3.0.0
+        with:
+          endpoint: builders
+
+      - name: '[execution] build and push manifests'
+        run: |
+          docker buildx imagetools create -t "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-amd64" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-arm64" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-arm" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-ppc64le" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-windows-amd64" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-windows-ltsc2022-amd64" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-windows-1809-amd64"
