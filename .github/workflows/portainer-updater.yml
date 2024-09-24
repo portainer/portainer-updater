@@ -122,11 +122,14 @@ jobs:
 
       - name: '[execution] build and push manifests'
         run: |
-          docker manifest create -t "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-amd64" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-arm64" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-arm" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-ppc64le" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-windows-amd64" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-windows-ltsc2022-amd64" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-windows-1809-amd64"
+          # Create image manifest
+          docker manifest create "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-linux-amd64" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-linux-arm64" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-linux-arm" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-linux-ppc64le" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-windowsltsc2022-amd64" \
+            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-windows1809-amd64"
+
+          # Push image manifest to publish
+          docker manifest create "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}"
