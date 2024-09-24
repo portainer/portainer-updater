@@ -136,6 +136,9 @@ jobs:
             TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g')
           fi
 
+          # set the container image tag prefix
+          echo "TAG_PREFIX=${TAG_PREFIX}" >> $GITHUB_ENV
+
       - name: '[execution] build and push manifests'
         run: |
           # Create image manifest
