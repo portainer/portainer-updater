@@ -76,7 +76,7 @@ jobs:
         uses: docker/build-push-action@v6.7.0
         with:
           context: .
-          tags: ${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}
+          tags: ${{ env.DOCKER_HUB_REPO }}:${CONTAINER_IMAGE_TAG}
           build-args: |
             GIT_COMMIT=$(git log -1 --format=%h)
           platforms: ${{ matrix.config.platform }}/${{ matrix.config.arch }}
@@ -90,7 +90,7 @@ jobs:
         uses: docker/build-push-action@v6.7.0
         with:
           context: .
-          tags: ${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}
+          tags: ${{ env.DOCKER_HUB_REPO }}:${CONTAINER_IMAGE_TAG}
           build-args: |
             GIT_COMMIT=$(git log -1 --format=%h)
             OSVERSION=${{ matrix.config.version }}
