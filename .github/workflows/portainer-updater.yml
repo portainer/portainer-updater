@@ -118,7 +118,7 @@ jobs:
 
       - name: '[execution] build and push manifests'
         run: |
-          docker buildx imagetools create -t "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}" \
+          docker manifest create -t "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}" \
             "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-amd64" \
             "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-arm64" \
             "${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-linux-arm" \
