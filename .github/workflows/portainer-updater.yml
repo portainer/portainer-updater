@@ -17,6 +17,7 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: true
       matrix:
         config:
           - { platform: linux, arch: amd64, version: "" }
@@ -40,7 +41,6 @@ jobs:
         with:
           endpoint: builders
           driver-opts: image=moby/buildkit:v0.16.0
-          platforms: linux/amd64,linux/arm64,linux/arm,linux/ppc64le
 
       - name: "[preparation] docker login"
         uses: docker/login-action@v3.3.0
@@ -48,9 +48,9 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
-      - name: '[preparation] set the container image tag'
+      - name: "[preparation] set the container image tag"
         run: |
-          # set the container image tag
+          # set the container image tag prefix
           if [[ "${GITHUB_REF_NAME}" =~ ^release/.*$ ]]; then
             # use the release branch name as the tag for release branches
             # for instance, release/2.19 becomes 2.19
@@ -64,13 +64,12 @@ jobs:
             # for instance, feature/1.0.0 -> feature-1.0.0
             TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g')
           fi
- 
-          echo "TAG_PREFIX=${TAG_PREFIX}" >> $GITHUB_ENV
+
+          # set the container image tag suffix
           TAG_SUFFIX="${{ matrix.config.platform }}${{ matrix.config.version }}-${{ matrix.config.arch }}"
-          echo "TAG_SUFFIX=${TAG_SUFFIX}" >> $GITHUB_ENV
 
           # set the container image tag
-          echo "CONTAINER_IMAGE_TAG=${TAG_PREFIX}-${TAG_SUFFIX}" >> $GITHUB_ENV
+          CONTAINER_IMAGE_TAG=${TAG_PREFIX}-${TAG_SUFFIX}"
 
       - name: "build and push images - linux"
         if: ${{ matrix.config.platform == 'linux' }}
@@ -120,16 +119,33 @@ jobs:
         with:
           endpoint: builders
 
+      - name: "[preparation] set the container image tag"
+        run: |
+          # set the container image tag prefix
+          if [[ "${GITHUB_REF_NAME}" =~ ^release/.*$ ]]; then
+            # use the release branch name as the tag for release branches
+            # for instance, release/2.19 becomes 2.19
+            TAG_PREFIX=$(echo $GITHUB_REF_NAME | cut -d "/" -f 2)
+          elif [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
+            # use pr${{ github.event.number }} as the tag for pull requests
+            # for instance, pr123
+            TAG_PREFIX="pr${{ github.event.number }}"
+          else
+            # replace / with - in the branch name
+            # for instance, feature/1.0.0 -> feature-1.0.0
+            TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g')
+          fi
+
       - name: '[execution] build and push manifests'
         run: |
           # Create image manifest
-          docker manifest create "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-linux-amd64" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-linux-arm64" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-linux-arm" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-linux-ppc64le" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-windowsltsc2022-amd64" \
-            "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}-windows1809-amd64"
+          docker manifest create "${{ env.DOCKER_HUB_REPO }}:${TAG_PREFIX}" \
+            "${{ env.DOCKER_HUB_REPO }}:${TAG_PREFIX}-linux-amd64" \
+            "${{ env.DOCKER_HUB_REPO }}:${TAG_PREFIX}-linux-arm64" \
+            "${{ env.DOCKER_HUB_REPO }}:${TAG_PREFIX}-linux-arm" \
+            "${{ env.DOCKER_HUB_REPO }}:${TAG_PREFIX}-linux-ppc64le" \
+            "${{ env.DOCKER_HUB_REPO }}:${TAG_PREFIX}-windowsltsc2022-amd64" \
+            "${{ env.DOCKER_HUB_REPO }}:${TAG_PREFIX}-windows1809-amd64"
 
           # Push image manifest to publish
-          docker manifest create "${{ env.DOCKER_HUB_REPO }}:${{ env.TAG_PREFIX }}"
+          docker manifest push "${{ env.DOCKER_HUB_REPO }}:${TAG_PREFIX}"
