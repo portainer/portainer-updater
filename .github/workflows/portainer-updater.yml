@@ -70,6 +70,7 @@ jobs:
 
           # set the container image tag
           CONTAINER_IMAGE_TAG="${TAG_PREFIX}-${TAG_SUFFIX}"
+          echo $CONTAINER_IMAGE_TAG
 
       - name: "build and push images - linux"
         if: ${{ matrix.config.platform == 'linux' }}
