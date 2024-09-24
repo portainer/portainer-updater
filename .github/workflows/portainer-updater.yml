@@ -51,7 +51,7 @@ jobs:
       - name: '[preparation] set the container image tag'
         run: |
           # set the container image tag suffix
-          TAG_SUFFIX="${{ matrix.platform }}${{ matrix.version }}-${{ matrix.arch }}"
+          TAG_SUFFIX="${{ matrix.config.platform }}${{ matrix.config.version }}-${{ matrix.config.arch }}"
 
           # set the container image tag prefix
           if [[ "${GITHUB_REF_NAME}" =~ ^release/.*$ ]]; then
