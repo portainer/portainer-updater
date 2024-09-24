@@ -69,7 +69,7 @@ jobs:
           TAG_SUFFIX="${{ matrix.config.platform }}${{ matrix.config.version }}-${{ matrix.config.arch }}"
 
           # set the container image tag
-          CONTAINER_IMAGE_TAG=${TAG_PREFIX}-${TAG_SUFFIX}
+          CONTAINER_IMAGE_TAG="${TAG_PREFIX}-${TAG_SUFFIX}"
 
       - name: "build and push images - linux"
         if: ${{ matrix.config.platform == 'linux' }}
