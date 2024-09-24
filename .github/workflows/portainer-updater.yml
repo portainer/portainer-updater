@@ -65,7 +65,7 @@ jobs:
           else
             # replace / with - in the branch name
             # for instance, feature/1.0.0 -> feature-1.0.0
-            echo "TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g'") >> $GITHUB_ENV
+            echo "TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g')" >> $GITHUB_ENV
           fi
  
           # set the container image tag
