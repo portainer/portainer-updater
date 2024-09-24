@@ -57,15 +57,15 @@ jobs:
           if [[ "${GITHUB_REF_NAME}" =~ ^release/.*$ ]]; then
             # use the release branch name as the tag for release branches
             # for instance, release/2.19 becomes 2.19
-            echo TAG_PREFIX=$(echo $GITHUB_REF_NAME | cut -d "/" -f 2) >> $GITHUB_ENV
+            echo "TAG_PREFIX=$(echo $GITHUB_REF_NAME | cut -d '/' -f 2)" >> $GITHUB_ENV
           elif [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
             # use pr${{ github.event.number }} as the tag for pull requests
             # for instance, pr123
-            echo TAG_PREFIX="pr${{ github.event.number }}" >> $GITHUB_ENV
+            echo "TAG_PREFIX=pr${{ github.event.number }}" >> $GITHUB_ENV
           else
             # replace / with - in the branch name
             # for instance, feature/1.0.0 -> feature-1.0.0
-            echo TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g') >> $GITHUB_ENV
+            echo "TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g'") >> $GITHUB_ENV
           fi
  
           # set the container image tag
