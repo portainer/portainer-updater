@@ -81,7 +81,7 @@ jobs:
           build-args: |
             GIT_COMMIT=$(git log -1 --format=%h)
           platforms: ${{ matrix.config.platform }}/${{ matrix.config.arch }}
-          file: ${{ matrix.config.platform }}/Dockerfile
+          file: build/${{ matrix.config.platform }}/Dockerfile
           sbom: true
           provenance: true
           push: true
@@ -96,7 +96,7 @@ jobs:
             GIT_COMMIT=$(git log -1 --format=%h)
             OSVERSION=${{ matrix.config.version }}
           platforms: ${{ matrix.config.platform }}/${{ matrix.config.arch }}
-          file: ${{ matrix.config.platform }}/Dockerfile
+          file: build/${{ matrix.config.platform }}/Dockerfile
           sbom: true
           provenance: true
           push: true
