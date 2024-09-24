@@ -50,24 +50,25 @@ jobs:
 
       - name: '[preparation] set the container image tag'
         run: |
-          # set the container image tag suffix
-          TAG_SUFFIX="${{ matrix.config.platform }}${{ matrix.config.version }}-${{ matrix.config.arch }}"
-
-          # set the container image tag prefix
+          # set the container image tag
           if [[ "${GITHUB_REF_NAME}" =~ ^release/.*$ ]]; then
             # use the release branch name as the tag for release branches
             # for instance, release/2.19 becomes 2.19
-            echo "TAG_PREFIX=$(echo $GITHUB_REF_NAME | cut -d '/' -f 2)" >> $GITHUB_ENV
+            TAG_PREFIX=$(echo $GITHUB_REF_NAME | cut -d "/" -f 2)
           elif [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
             # use pr${{ github.event.number }} as the tag for pull requests
             # for instance, pr123
-            echo "TAG_PREFIX=pr${{ github.event.number }}" >> $GITHUB_ENV
+            TAG_PREFIX="pr${{ github.event.number }}"
           else
             # replace / with - in the branch name
             # for instance, feature/1.0.0 -> feature-1.0.0
-            echo "TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g')" >> $GITHUB_ENV
+            TAG_PREFIX=$(echo $GITHUB_REF_NAME | sed 's/\//-/g')
           fi
  
+          echo "TAG_PREFIX=${TAG_PREFIX}" >> $GITHUB_ENV
+          TAG_SUFFIX="${{ matrix.config.platform }}${{ matrix.config.version }}-${{ matrix.config.arch }}"
+          echo "TAG_SUFFIX=${TAG_SUFFIX}" >> $GITHUB_ENV
+
           # set the container image tag
           echo "CONTAINER_IMAGE_TAG=${TAG_PREFIX}-${TAG_SUFFIX}" >> $GITHUB_ENV
 
