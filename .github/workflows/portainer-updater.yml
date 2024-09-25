@@ -107,16 +107,29 @@ jobs:
           pattern: digests-*
           merge-multiple: true
 
+      - name: "[preparation] setup manifest name"
+        run: |
+          if [[ "${GITHUB_REF_NAME}" =~ ^release/.*$ ]]; then
+            # use the release branch name as the tag for release branches
+            # for instance, release/2.19 becomes 2.19
+            CONTAINER_IMAGE_TAG=$(echo $GITHUB_REF_NAME | cut -d "/" -f 2)
+          elif [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
+            # use pr${{ github.event.number }} as the tag for pull requests
+            # for instance, pr123
+            CONTAINER_IMAGE_TAG="pr${{ github.event.number }}"
+          else
+            # replace / with - in the branch name
+            # for instance, feature/1.0.0 -> feature-1.0.0
+            CONTAINER_IMAGE_TAG=$(echo $GITHUB_REF_NAME | sed 's/\//-/g')
+          fi
+
       - name: "[metadata] generate image tags"
         id: meta
         uses: docker/metadata-action@v5.5.1
         with:
           images: ${{ env.DOCKER_HUB_REPO }}
           tags: |
-            type=raw,value=develop,enable=${{ github.ref == format('refs/heads/{0}', 'develop') }}
-            type=raw,value=${{ format('{0}', github.ref_name.replace('chore/', '')) }},enable=${{ startsWith(github.ref_name, 'chore/') }}
-            type=ref,event=branch
-            type=ref,event=pr,prefix=pr
+            type=raw,value=${CONTAINER_IMAGE_TAG}
 
       - name: "[preparation] set up docker context for buildx"
         run: docker context create builders
