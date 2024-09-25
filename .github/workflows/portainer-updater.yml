@@ -123,13 +123,16 @@ jobs:
             CONTAINER_IMAGE_TAG=$(echo $GITHUB_REF_NAME | sed 's/\//-/g')
           fi
 
+          # export the tag to the environment
+          echo "CONTAINER_IMAGE_TAG=${CONTAINER_IMAGE_TAG}" >> $GITHUB_ENV
+
       - name: "[metadata] generate image tags"
         id: meta
         uses: docker/metadata-action@v5.5.1
         with:
           images: ${{ env.DOCKER_HUB_REPO }}
           tags: |
-            type=raw,value=${CONTAINER_IMAGE_TAG}
+            type=raw,value=${{ env.CONTAINER_IMAGE_TAG }}
 
       - name: "[preparation] set up docker context for buildx"
         run: docker context create builders
