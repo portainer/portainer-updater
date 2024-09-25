@@ -80,8 +80,9 @@ jobs:
           outputs: type=image,name=${{ env.DOCKER_HUB_REPO }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          sbom: true
-          provenance: mode=max
+          attests: |
+            type=sbom
+            type=provenance,mode=max
 
       - name: "[build] export digest"
         run: |
