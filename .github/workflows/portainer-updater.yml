@@ -63,11 +63,6 @@ jobs:
         uses: docker/metadata-action@v5.5.1
         with:
           images: ${{ env.DOCKER_HUB_REPO }}
-          tags: |
-            type=raw,value=develop,enable=${{ github.ref == format('refs/heads/{0}', 'develop') }}
-            type=raw,value=${{ format('{0}', github.ref_name.replace('release/', '')) }},enable=${{ startsWith(github.ref_name, 'release/') }}
-            type=ref,event=branch
-            type=ref,event=pr,prefix=pr
 
       - name: "[build] build and push by digest"
         id: build
@@ -117,6 +112,11 @@ jobs:
         uses: docker/metadata-action@v5.5.1
         with:
           images: ${{ env.DOCKER_HUB_REPO }}
+          tags: |
+            type=raw,value=develop,enable=${{ github.ref == format('refs/heads/{0}', 'develop') }}
+            type=raw,value=${{ format('{0}', github.ref_name.replace('chore/', '')) }},enable=${{ startsWith(github.ref_name, 'chore/') }}
+            type=ref,event=branch
+            type=ref,event=pr,prefix=pr
 
       - name: "[preparation] set up docker context for buildx"
         run: docker context create builders
