@@ -69,7 +69,7 @@ jobs:
             # Tag for all other branches (e.g., main, develop) using the branch name directly
             type=ref,event=branch,pattern=*,group=branch,format={{ .RefName }}
             # Tag for pull requests using the PR number (e.g., pr123)
-            type=ref,event=pull_request,format=pr{{ .RefNum }
+            type=ref,event=pr,format=pr{{ .RefNum }
 
       - name: "[build] build and push by digest"
         id: build
