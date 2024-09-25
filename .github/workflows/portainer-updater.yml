@@ -8,16 +8,13 @@ on:
       - 'release/*'
   pull_request:
     types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
+      - 'opened'
+      - 'reopened'
+      - 'synchronize'
+      - 'ready_for_review'
     branches:
       - 'develop'
       - 'release/*'
-      - 'feat/*'
-      - 'fix/*'
-      - 'refactor/*'
 
 env:
   DOCKER_HUB_REPO: portainerci/portainer-updater
