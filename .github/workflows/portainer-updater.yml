@@ -28,10 +28,10 @@ jobs:
       matrix:
         config:
           - { platform: linux, arch: amd64, version: "" }
-          - { platform: linux, arch: arm64, version: "" }
-          - { platform: linux, arch: arm, version: "" }
-          - { platform: linux, arch: ppc64le, version: "" }
-          - { platform: windows, arch: amd64, version: 1809 }
+          # - { platform: linux, arch: arm64, version: "" }
+          # - { platform: linux, arch: arm, version: "" }
+          # - { platform: linux, arch: ppc64le, version: "" }
+          # - { platform: windows, arch: amd64, version: 1809 }
           - { platform: windows, arch: amd64, version: ltsc2022 }
     steps:
       - name: "[preparation] checkout"
@@ -73,6 +73,7 @@ jobs:
             GO_VERSION=1.22.7
             GIT_VERSION=2.46.0
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           outputs: type=image,name=${{ env.DOCKER_HUB_REPO }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
