@@ -1,6 +1,6 @@
 ARG BASE_IMAGE=portainer/base
 ARG GIT_COMMIT=unspecified
-ARG GO_VERSION=1.22.7
+ARG GO_VERSION=1.22.6
 
 # Stage 1: Build the Go application
 FROM golang:${GO_VERSION}-alpine3.20 AS build
