@@ -81,7 +81,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           sbom: true
-          provenance: true
+          provenance: mode=max
 
       - name: "[build] export digest"
         run: |
