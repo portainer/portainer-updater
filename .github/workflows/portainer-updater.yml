@@ -65,7 +65,7 @@ jobs:
           images: ${{ env.DOCKER_HUB_REPO }}
           tags: |
             # Tag for branches that match 'release/*', extract the part after 'release/' as the tag
-            type=ref,event=branch,pattern=chore/*,group=release,format={{trimPrefix chore/ .RefName}}
+            type=ref,event=branch,pattern=refs/heads/chore/*,group=release,format={{trimPrefix refs/heads/chore/ .RefName}}
             # Tag for all other branches (e.g., main, develop) using the branch name directly
             type=ref,event=branch,pattern=*,group=branch,format={{ .RefName }}
             # Tag for pull requests using the PR number (e.g., pr123)
