@@ -64,7 +64,8 @@ jobs:
         with:
           images: ${{ env.DOCKER_HUB_REPO }}
           tags: |
-            type=sha
+            type=ref,event=branch
+            type=ref,event=pr
 
       - name: "[build] build and push by digest"
         id: build
