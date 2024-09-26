@@ -94,8 +94,8 @@ jobs:
             OSVERSION=${{ matrix.config.version }}
             GO_VERSION=1.22.7
             GIT_VERSION=2.46.0
-          labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ steps.meta.outputs.annotations }}
+          # labels: ${{ steps.meta.outputs.labels }}
+          # annotations: ${{ steps.meta.outputs.annotations }}
           # outputs: type=image,push=true
           outputs: type=image,name=${{ env.DOCKER_HUB_REPO }},push-by-digest=true,name-canonical=true,push=true
           # cache-from: type=gha
