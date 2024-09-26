@@ -38,7 +38,7 @@ ENV PATH="C:\mingit\cmd;C:\app;C:\Windows\system32;C:\Windows;"
 
 # Copy the Git tools and built application from previous stages
 COPY --from=downloader /mingit mingit/
-COPY --from=core C:/Windows/System32/netapi32.dll C:/Windows/System32/netapi32.dll
+COPY --from=core /Windows/System32/netapi32.dll C:/Windows/System32/netapi32.dll
 COPY --from=build /go/src/app/portainer-updater.exe C:/app/portainer-updater.exe
 
 # Set user as ContainerAdministrator for appropriate permissions
