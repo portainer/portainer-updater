@@ -87,7 +87,7 @@ jobs:
         uses: docker/build-push-action@v6.7.0
         with:
           platforms: ${{ matrix.config.platform }}/${{ matrix.config.arch }}
-          tags: ${{ env.DOCKER_HUB_REPO }}/${{ env.CONTAINER_IMAGE_TAG }}-${{ matrix.config.platform }}${{ matrix.config.version }}-${{ matrix.config.arch }}
+          tags: ${{ env.DOCKER_HUB_REPO }}:${{ env.CONTAINER_IMAGE_TAG }}-${{ matrix.config.platform }}${{ matrix.config.version }}-${{ matrix.config.arch }}
           file: build/${{ matrix.config.platform }}/Dockerfile
           build-args: |
             GIT_COMMIT=$(git log -1 --format=%h)
