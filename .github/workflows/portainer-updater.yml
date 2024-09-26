@@ -55,19 +55,39 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
+      - name: "[preparation] setup manifest name"
+        run: |
+          if [[ "${GITHUB_REF_NAME}" =~ ^release/.*$ ]]; then
+            # use the release branch name as the tag for release branches
+            # for instance, release/2.19 becomes 2.19
+            CONTAINER_IMAGE_TAG=$(echo $GITHUB_REF_NAME | cut -d "/" -f 2)
+          elif [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
+            # use pr${{ github.event.number }} as the tag for pull requests
+            # for instance, pr123
+            CONTAINER_IMAGE_TAG="pr${{ github.event.number }}"
+          else
+            # replace / with - in the branch name
+            # for instance, feature/1.0.0 -> feature-1.0.0
+            CONTAINER_IMAGE_TAG=$(echo $GITHUB_REF_NAME | sed 's/\//-/g')
+          fi
+
+          # export the tag to the environment
+          echo "CONTAINER_IMAGE_TAG=${CONTAINER_IMAGE_TAG}" >> $GITHUB_ENV
+
       - name: "[metadata] generate image tags"
         id: meta
         uses: docker/metadata-action@v5.5.1
         with:
           images: ${{ env.DOCKER_HUB_REPO }}
-        env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+          tags: |
+            type=raw,value=${{ env.CONTAINER_IMAGE_TAG }}
 
       - name: "[build] build and push by digest"
         id: build
         uses: docker/build-push-action@v6.7.0
         with:
           platforms: ${{ matrix.config.platform }}/${{ matrix.config.arch }}
+          tags: ${{ env.CONTAINER_IMAGE_TAG }}-${{ matrix.config.platform }}{{ matrix.config.version }}-${{ matrix.config.arch }}
           file: build/${{ matrix.config.platform }}/Dockerfile
           build-args: |
             GIT_COMMIT=$(git log -1 --format=%h)
