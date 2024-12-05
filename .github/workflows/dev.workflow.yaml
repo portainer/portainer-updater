@@ -12,7 +12,7 @@ env:
   GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: staging
     steps:
