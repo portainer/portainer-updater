@@ -100,9 +100,9 @@ jobs:
           sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # attests: |
-          #   type=sbom
-          #   type=provenance,mode=max
+          attests: |
+            type=sbom
+            type=provenance,mode=max
 
       - name: "[build] export digest"
         run: |
