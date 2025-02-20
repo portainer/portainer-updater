@@ -175,13 +175,13 @@ jobs:
       - name: "[build] create manifest list and push"
         working-directory: /tmp/digests
         run: |
-          docker manifest create ${{ env.DOCKER_HUB_REPO }}:${{ steps.meta.outputs.version }} \
-            $(printf '${{ env.DOCKER_HUB_REPO }}@sha256:%s ' *)
-          
-          docker manifest push ${{ env.DOCKER_HUB_REPO }}:${{ steps.meta.outputs.version }}
-
-          # docker buildx imagetools create -t ${{ env.DOCKER_HUB_REPO }}:${{ steps.meta.outputs.version }} \
+          # docker manifest create ${{ env.DOCKER_HUB_REPO }}:${{ steps.meta.outputs.version }} \
           #   $(printf '${{ env.DOCKER_HUB_REPO }}@sha256:%s ' *)
+          
+          # docker manifest push ${{ env.DOCKER_HUB_REPO }}:${{ steps.meta.outputs.version }}
+
+          docker buildx imagetools create -t ${{ env.DOCKER_HUB_REPO }}:${{ steps.meta.outputs.version }} \
+            $(printf '${{ env.DOCKER_HUB_REPO }}@sha256:%s ' *)
       
       - name: "[validate] inspect image"
         run: |
