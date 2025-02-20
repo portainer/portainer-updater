@@ -91,8 +91,8 @@ jobs:
           build-args: |
             GIT_COMMIT=$(git log -1 --format=%h)
             OSVERSION=${{ matrix.config.version }}
-            GO_VERSION=1.23.2
-            GIT_VERSION=2.46.0
+            GO_VERSION=1.23.5
+            GIT_VERSION=2.47.0
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           outputs: type=image,name=${{ env.DOCKER_HUB_REPO }},push-by-digest=true,name-canonical=true,push=true
