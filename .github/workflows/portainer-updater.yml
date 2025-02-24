@@ -96,13 +96,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           outputs: type=image,name=${{ env.DOCKER_HUB_REPO }},push-by-digest=true,name-canonical=true,push=true
-          provenance: true
+          # provenance: true
           # sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # attests: |
-          #   type=sbom,generator=docker/scout-sbom-indexer:latest
-          #   type=provenance,mode=max
+          attests: |
+            type=sbom,generator=buildkit-syft-scanner:latest
+            type=provenance,mode=max
 
       - name: "[build] export digest"
         run: |
