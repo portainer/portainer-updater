@@ -31,8 +31,8 @@ jobs:
           - { platform: linux, arch: arm64, version: "" }
           - { platform: linux, arch: arm, version: "" }
           - { platform: linux, arch: ppc64le, version: "" }
-          - { platform: windows, arch: amd64, version: 1809 }
-          - { platform: windows, arch: amd64, version: ltsc2022 }
+          # - { platform: windows, arch: amd64, version: 1809 }
+          # - { platform: windows, arch: amd64, version: ltsc2022 }
     steps:
       - name: "[preparation] checkout"
         uses: actions/checkout@v4.1.1
@@ -101,7 +101,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           attests: |
-            type=sbom,generator=buildkit-syft-scanner:latest
+            type=sbom
             type=provenance,mode=max
 
       - name: "[build] export digest"
