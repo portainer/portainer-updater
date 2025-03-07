@@ -9,7 +9,6 @@ import (
 )
 
 func main() {
-
 	cliCtx := kong.Parse(&cli.CLI,
 		kong.Name("portainer-updater"),
 		kong.Description("A tool to update Portainer software"),
@@ -20,11 +19,12 @@ func main() {
 		}))
 
 	log.ConfigureLogger(cli.CLI.PrettyLog)
-	log.SetLoggingLevel(log.Level(cli.CLI.LogLevel))
+	log.SetLoggingLevel(cli.CLI.LogLevel)
 
 	err := cliCtx.Run()
 	if err != nil {
 		cliCtx.FatalIfErrorf(err)
 	}
+
 	os.Exit(0)
 }

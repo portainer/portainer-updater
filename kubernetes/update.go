@@ -2,8 +2,8 @@ package kubernetes
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"github.com/segmentio/encoding/json"
 	"time"
 
 	"github.com/pkg/errors"
@@ -11,7 +11,7 @@ import (
 	appV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	types "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	v1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 )
