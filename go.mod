@@ -7,7 +7,7 @@ require (
 	github.com/alecthomas/kong v1.8.1
 	github.com/docker/docker v27.4.0+incompatible
 	github.com/pkg/errors v0.9.1
-	github.com/rs/zerolog v1.28.0
+	github.com/rs/zerolog v1.29.0
 	github.com/segmentio/encoding v0.4.1
 	k8s.io/api v0.29.2
 	k8s.io/apimachinery v0.29.2
