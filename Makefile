@@ -36,3 +36,9 @@ tidy:
 
 clean:
 	rm -rf $(dist)/*
+
+lint:
+	golangci-lint run --timeout=10m -c .golangci.yaml
+
+format:
+	go fmt ./...
