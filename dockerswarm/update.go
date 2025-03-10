@@ -3,6 +3,7 @@ package dockerswarm
 import (
 	"bytes"
 	"context"
+	"github.com/docker/docker/api/types/image"
 	"io"
 	"os"
 	"strings"
@@ -109,7 +110,7 @@ func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) 
 		Str("image", imageName).
 		Msg("Pulling Docker image")
 
-	reader, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+	reader, err := dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {
 		log.Err(err).
 			Str("image", imageName).

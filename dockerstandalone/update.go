@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
+	"github.com/segmentio/encoding/json"
 	"io"
 	"os"
 	"strings"
@@ -29,7 +29,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		Str("image", imageName).
 		Msg("Starting update process")
 
-		// We look for the existing container to copy its configuration
+	// We look for the existing container to copy its configuration
 	log.Debug().
 		Str("containerId", oldContainerId).
 		Msg("Looking for container")
@@ -284,8 +284,7 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 	}
 
 	tries := 5
-	for i := 0; i < tries; i++ {
-
+	for range tries {
 		if container.State.Health.Status == "healthy" {
 			return true, nil
 		}
