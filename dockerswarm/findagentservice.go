@@ -8,8 +8,8 @@ import (
 	"github.com/portainer/portainer-updater/dockerstandalone"
 )
 
-func FindPortainerService(ctx context.Context, dockerCli *client.Client) (*swarm.Service, error) {
-	container, err := dockerstandalone.FindPortainerContainer(ctx, dockerCli)
+func FindAgentService(ctx context.Context, dockerCli *client.Client) (*swarm.Service, error) {
+	container, err := dockerstandalone.FindAgentContainer(ctx, dockerCli)
 	if err != nil {
 		return nil, err
 	}

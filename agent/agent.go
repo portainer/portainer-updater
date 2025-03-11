@@ -3,15 +3,14 @@ package agent
 import (
 	"context"
 	"fmt"
-	"os"
+	"github.com/docker/docker/api/types/swarm"
+	"github.com/portainer/portainer-updater/dockerswarm"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/hashicorp/nomad/api"
 	"github.com/pkg/errors"
 	"github.com/portainer/portainer-updater/dockerstandalone"
-	"github.com/portainer/portainer-updater/nomad"
 	"github.com/rs/zerolog/log"
 )
 
@@ -21,12 +20,13 @@ const UpdateScheduleIDLabel = "io.portainer.update.scheduleId"
 type EnvType string
 
 const (
+	EnvTypeDocker EnvType = "docker"
+	// deprecated
 	EnvTypeDockerStandalone EnvType = "standalone"
-	EnvTypeNomad            EnvType = "nomad"
 )
 
 type AgentCommand struct {
-	EnvType    EnvType `kong:"help='The environment type',default='standalone',enum='standalone,nomad'"`
+	EnvType    EnvType `help:"The environment type. Supported types: 'docker' 'standalone'(deprecated)" default:"docker" enum:"docker,standalone"`
 	ScheduleId string  `arg:"" help:"Schedule ID of the agent to upgrade to. e.g. 1" name:"schedule-id"`
 	Image      string  `arg:"" help:"Image of the agent to upgrade to. e.g. portainer/agent:latest" name:"image" default:"portainer/agent:latest"`
 }
@@ -35,24 +35,57 @@ func (r *AgentCommand) Run() error {
 	ctx := context.Background()
 
 	switch r.EnvType {
-	case "standalone":
-		return r.runStandalone(ctx)
-	case "nomad":
-		return r.runNomad(ctx)
+	case EnvTypeDocker, EnvTypeDockerStandalone:
+		return r.runDocker(ctx)
 	}
 
 	return errors.Errorf("unknown environment type: %s", r.EnvType)
 }
 
-func (r *AgentCommand) runStandalone(ctx context.Context) error {
+func (r *AgentCommand) runDocker(ctx context.Context) error {
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		log.Fatal().Err(err).Msg("Unable to initialize Docker client")
+		return errors.Wrap(err, "unable to create docker client")
+	}
+	defer dockerCli.Close()
+
+	dockerInfo, err := dockerCli.Info(context.Background())
+	if err != nil {
+		return errors.Wrap(err, "unable to get docker info")
 	}
 
+	if dockerInfo.Swarm.NodeID != "" {
+		return r.runSwarm(ctx, dockerCli)
+	}
+
+	return r.runStandalone(ctx, dockerCli)
+}
+
+func (r *AgentCommand) runSwarm(ctx context.Context, dockerCli *client.Client) error {
 	log.Info().
 		Str("image", r.Image).
 		Str("schedule-id", r.ScheduleId).
+		Str("env", "swarm").
+		Msg("Updating Portainer agent")
+	service, err := dockerswarm.FindAgentService(ctx, dockerCli)
+	if err != nil {
+		return errors.WithMessage(err, "failed finding service")
+	}
+
+	return dockerswarm.Update(ctx, dockerCli, r.Image, service, func(config *swarm.ContainerSpec) {
+		if config.Labels == nil {
+			config.Labels = make(map[string]string)
+		}
+
+		config.Labels[UpdateScheduleIDLabel] = r.ScheduleId
+	})
+}
+
+func (r *AgentCommand) runStandalone(ctx context.Context, dockerCli *client.Client) error {
+	log.Info().
+		Str("image", r.Image).
+		Str("schedule-id", r.ScheduleId).
+		Str("env", "standalone").
 		Msg("Updating Portainer agent")
 	oldContainer, err := dockerstandalone.FindAgentContainer(ctx, dockerCli)
 	if err != nil {
@@ -86,52 +119,4 @@ func (r *AgentCommand) runStandalone(ctx context.Context) error {
 
 		config.Labels[UpdateScheduleIDLabel] = r.ScheduleId
 	})
-}
-
-func (r *AgentCommand) runNomad(ctx context.Context) error {
-	nomadConfig := api.DefaultConfig()
-
-	nomadAddress := os.Getenv(nomad.NomadAddrEnvVarName)
-	if strings.HasPrefix(nomadAddress, "https") {
-		tls := &api.TLSConfig{
-			CACertPEM:     []byte(os.Getenv(nomad.NomadCACertContentEnvVarName)),
-			ClientCertPEM: []byte(os.Getenv(nomad.NomadClientCertContentEnvVarName)),
-			ClientKeyPEM:  []byte(os.Getenv(nomad.NomadClientKeyContentEnvVarName)),
-		}
-		nomadConfig.TLSConfig = tls
-	}
-
-	nomadCli, err := api.NewClient(nomadConfig)
-	if err != nil {
-		return errors.WithMessage(err, "failed to initialize Nomad client")
-	}
-
-	job, task, err := nomad.FindAgentContainer(ctx, nomadCli)
-	if err != nil {
-		return errors.WithMessage(err, "failed finding container id")
-	}
-
-	if task.Env == nil {
-		task.Env = make(map[string]string, 0)
-	}
-
-	// add nomad env
-	task.Env[nomad.NomadAddrEnvVarName] = os.Getenv(nomad.NomadAddrEnvVarName)
-	task.Env[nomad.NomadNamespaceEnvVarName] = os.Getenv(nomad.NomadNamespaceEnvVarName)
-	task.Env[nomad.NomadRegionEnvVarName] = os.Getenv(nomad.NomadRegionEnvVarName)
-	task.Env[nomad.NomadTokenEnvVarName] = os.Getenv(nomad.NomadTokenEnvVarName)
-	// add nomad tls certificate info env
-	task.Env[nomad.NomadCACertContentEnvVarName] = os.Getenv(nomad.NomadCACertContentEnvVarName)
-	task.Env[nomad.NomadClientCertContentEnvVarName] = os.Getenv(nomad.NomadClientCertContentEnvVarName)
-	task.Env[nomad.NomadClientKeyContentEnvVarName] = os.Getenv(nomad.NomadClientKeyContentEnvVarName)
-	// add portainer agent env
-	task.Env[nomad.EnvKeyEdge] = os.Getenv(nomad.EnvKeyEdge)
-	task.Env[nomad.EnvKeyEdgeKey] = os.Getenv(nomad.EnvKeyEdgeKey)
-	task.Env[nomad.EnvKeyEdgeID] = os.Getenv(nomad.EnvKeyEdgeID)
-	task.Env[nomad.EnvKeyEdgeInsecurePoll] = os.Getenv(nomad.EnvKeyEdgeInsecurePoll)
-	task.Env[nomad.EnvKeyAgentSecret] = os.Getenv(nomad.EnvKeyAgentSecret)
-	// add update id
-	task.Env[nomad.EnvKeyUpdateID] = r.ScheduleId
-
-	return nomad.Update(ctx, nomadCli, job, task, r.Image, r.ScheduleId)
 }
