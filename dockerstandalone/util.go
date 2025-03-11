@@ -2,6 +2,7 @@ package dockerstandalone
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -10,21 +11,18 @@ const UpdateScheduleIDLabel = "io.portainer.update.scheduleId"
 
 // UpdateEnv updates the environment variables of a container to include the update schedule ID
 func UpdateEnv(env []string, scheduleId string) []string {
-	foundIndex := -1
-	for index, envVar := range env {
-		if strings.HasPrefix(envVar, "UPDATE_ID=") {
-			foundIndex = index
-		}
-	}
+	foundIndex := slices.IndexFunc(env, func(envVar string) bool {
+		return strings.HasPrefix(envVar, "UPDATE_ID=")
+	})
 
 	scheduleEnv := fmt.Sprintf("UPDATE_ID=%s", scheduleId)
 	if foundIndex != -1 {
 		env[foundIndex] = scheduleEnv
-	} else {
-		env = append(env, scheduleEnv)
+
+		return env
 	}
 
-	return env
+	return append(env, scheduleEnv)
 }
 
 // UpdateLabels updates the labels of a container to include the update schedule ID
