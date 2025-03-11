@@ -2,20 +2,15 @@ package agent
 
 import (
 	"context"
-	"fmt"
-	"github.com/docker/docker/api/types/swarm"
-	"github.com/portainer/portainer-updater/dockerswarm"
-	"strings"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/portainer/portainer-updater/dockerstandalone"
+	"github.com/portainer/portainer-updater/dockerswarm"
 	"github.com/rs/zerolog/log"
 )
-
-// UpdateScheduleIDLabel is the label used to store the update schedule ID
-const UpdateScheduleIDLabel = "io.portainer.update.scheduleId"
 
 type EnvType string
 
@@ -73,11 +68,8 @@ func (r *AgentCommand) runSwarm(ctx context.Context, dockerCli *client.Client) e
 	}
 
 	return dockerswarm.Update(ctx, dockerCli, r.Image, service, func(config *swarm.ContainerSpec) {
-		if config.Labels == nil {
-			config.Labels = make(map[string]string)
-		}
-
-		config.Labels[UpdateScheduleIDLabel] = r.ScheduleId
+		config.Env = dockerstandalone.UpdateEnv(config.Env, r.ScheduleId)
+		config.Labels = dockerstandalone.UpdateLabels(config.Labels, r.ScheduleId)
 	})
 }
 
@@ -92,31 +84,14 @@ func (r *AgentCommand) runStandalone(ctx context.Context, dockerCli *client.Clie
 		return errors.WithMessage(err, "failed finding container id")
 	}
 
-	if oldContainer.Labels != nil && oldContainer.Labels[UpdateScheduleIDLabel] == r.ScheduleId {
+	if oldContainer.Labels != nil && oldContainer.Labels[dockerstandalone.UpdateScheduleIDLabel] == r.ScheduleId {
 		log.Info().Msg("Agent already updated")
 
 		return nil
 	}
 
 	return dockerstandalone.Update(ctx, dockerCli, oldContainer.ID, r.Image, func(config *container.Config) {
-		foundIndex := -1
-		for index, env := range config.Env {
-			if strings.HasPrefix(env, "UPDATE_ID=") {
-				foundIndex = index
-			}
-		}
-
-		scheduleEnv := fmt.Sprintf("UPDATE_ID=%s", r.ScheduleId)
-		if foundIndex != -1 {
-			config.Env[foundIndex] = scheduleEnv
-		} else {
-			config.Env = append(config.Env, scheduleEnv)
-		}
-
-		if config.Labels == nil {
-			config.Labels = make(map[string]string)
-		}
-
-		config.Labels[UpdateScheduleIDLabel] = r.ScheduleId
+		config.Env = dockerstandalone.UpdateEnv(config.Env, r.ScheduleId)
+		config.Labels = dockerstandalone.UpdateLabels(config.Labels, r.ScheduleId)
 	})
 }
