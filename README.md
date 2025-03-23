@@ -1,6 +1,6 @@
-# Portainer-upgrader
+# Portainer-updater
 
-A tool to upgrade the Portainer software.
+A tool to update the Portainer software.
 
 Build:
 
