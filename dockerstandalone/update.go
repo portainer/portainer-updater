@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/segmentio/encoding/json"
 	"io"
 	"os"
 	"strings"
@@ -19,11 +18,16 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/segmentio/encoding/json"
 )
 
 var errUpdateFailure = errors.New("update failure")
 
-func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string, imageName string, updateConfig func(*container.Config)) error {
+type UpdateOptions struct {
+	Agent bool
+}
+
+func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string, imageName string, updateConfig func(*container.Config), options UpdateOptions) error {
 	log.Info().
 		Str("containerId", oldContainerId).
 		Str("image", imageName).
@@ -79,8 +83,24 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
 	}
 
-	err = startContainer(ctx, dockerCli, oldContainer.ID, newContainerID)
-	if err != nil {
+	log.Info().
+		Str("containerId", oldContainerId).
+		Str("image", imageName).
+		Msg("Stopping old container")
+
+	if err := dockerCli.ContainerStop(ctx, oldContainer.ID, container.StopOptions{}); err != nil {
+		log.Err(err).
+			Msg("Unable to stop container")
+
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+	}
+
+	log.Info().
+		Str("containerId", newContainerID).
+		Str("image", tempContainerName).
+		Msg("Starting new container")
+
+	if err := dockerCli.ContainerStart(ctx, newContainerID, container.StartOptions{}); err != nil {
 		log.Err(err).
 			Msg("Unable to start container")
 
@@ -96,6 +116,19 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 
 	if !healthy {
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+	}
+
+	if options.Agent {
+		healthy, err = monitorAgentHealth(ctx, dockerCli, newContainerID, IsAsyncAgent(oldContainer))
+		if err != nil {
+			log.Err(err).
+				Msg("Unable to monitor agent container health")
+			return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+		}
+
+		if !healthy {
+			return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+		}
 	}
 
 	log.Info().
@@ -121,8 +154,16 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 }
 
 func cleanupContainerAndError(ctx context.Context, dockerCli *client.Client, oldContainerId, newContainerID string) error {
-	log.Debug().
+	log.Info().
 		Msg("An error occurred during the update process - removing newly created container")
+
+	if newContainerID != "" {
+		printLogsToStdout(ctx, dockerCli, newContainerID)
+		if err := dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true}); err != nil {
+			log.Err(err).
+				Msg("Unable to remove temporary container, please remove it manually")
+		}
+	}
 
 	// should restart old container
 	err := dockerCli.ContainerStart(ctx, oldContainerId, container.StartOptions{})
@@ -132,15 +173,8 @@ func cleanupContainerAndError(ctx context.Context, dockerCli *client.Client, old
 			Msg("Unable to restart container, please restart it manually")
 	}
 
-	if newContainerID != "" {
-		printLogsToStdout(ctx, dockerCli, newContainerID)
-
-		err = dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true})
-		if err != nil {
-			log.Err(err).
-				Msg("Unable to remove temporary container, please remove it manually")
-		}
-	}
+	log.Info().
+		Msg("Successfully restarted old container and cleaned up temporary container")
 
 	return errUpdateFailure
 }
@@ -255,10 +289,51 @@ func tryRemoveOldContainer(ctx context.Context, dockerCli *client.Client, oldCon
 	}
 }
 
+func monitorAgentHealth(ctx context.Context, dockerCli *client.Client, containerID string, asyncMode bool) (bool, error) {
+	log.Info().
+		Str("containerId", containerID).
+		Msg("Monitoring new agent container health by checking for the health file")
+	var lastErr error
+	backoffBase := 5
+	if asyncMode {
+		backoffBase = 60
+	}
+	for i := range 10 {
+		lastErr = defaultHealthChecker.healthy(ctx, dockerCli, containerID)
+		if lastErr == nil {
+			log.Info().
+				Str("containerId", containerID).
+				Msg("Agent health check passed. The agent is healthy.")
+			return true, nil
+		}
+		if errors.Is(lastErr, ErrBinaryNotFound) {
+			log.Warn().
+				Err(ErrBinaryNotFound).
+				Str("containerId", containerID).
+				Msg("Agent health cannot be checked. Assuming health check passed.")
+
+			return true, nil
+		}
+
+		backoff := backoffBase * i
+		log.Info().
+			Str("containerId", containerID).
+			Err(lastErr).
+			Int("backoff", backoff).
+			Msg("Agent health check failed. Retrying after backoff")
+		time.Sleep(time.Duration(backoff) * time.Second)
+	}
+
+	log.Error().
+		Msg("Agent health check timed out. Exiting without updating the container")
+
+	return false, errors.Wrap(lastErr, "Agent health check timed out")
+}
+
 func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId string) (bool, error) {
 	// We then wait for the new container to be ready and monitor its health
 	// This is done by inspecting the container healthcheck status
-	log.Debug().
+	log.Info().
 		Str("containerId", containerId).
 		Msg("Monitoring new container health")
 
@@ -317,25 +392,6 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 
 	return false, nil
 
-}
-
-func startContainer(ctx context.Context, dockerCli *client.Client, oldContainerID, newContainerID string) error {
-	// We then start the new container
-	log.Debug().
-		Str("containerId", newContainerID).
-		Msg("Starting new container")
-
-	err := dockerCli.ContainerStop(ctx, oldContainerID, container.StopOptions{})
-	if err != nil {
-		return errors.WithMessage(err, "Unable to stop old container")
-	}
-
-	err = dockerCli.ContainerStart(ctx, newContainerID, container.StartOptions{})
-	if err != nil {
-		return errors.WithMessage(err, "Unable to start new container")
-	}
-
-	return nil
 }
 
 func createContainer(ctx context.Context, dockerCli *client.Client, imageName, tempContainerName string, oldContainer types.ContainerJSON, updateConfig func(*container.Config)) (string, error) {

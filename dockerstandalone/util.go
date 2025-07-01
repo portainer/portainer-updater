@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/docker/docker/api/types"
 )
 
 // UpdateScheduleIDLabel is the label used to store the update schedule ID
@@ -34,4 +36,24 @@ func UpdateLabels(labels map[string]string, scheduleId string) map[string]string
 	labels[UpdateScheduleIDLabel] = scheduleId
 
 	return labels
+}
+
+func IsAsyncAgent(container types.ContainerJSON) bool {
+	for _, arg := range container.Args {
+		if arg == "--async-mode" {
+			return true
+		}
+	}
+
+	const edgeAsyncEnv = "EDGE_ASYNC="
+	for _, env := range container.Config.Env {
+		if strings.HasPrefix(env, edgeAsyncEnv) {
+			value := strings.TrimPrefix(env, edgeAsyncEnv)
+			if value == "true" || value == "1" {
+				return true
+			}
+		}
+	}
+
+	return false
 }

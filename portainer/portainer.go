@@ -3,13 +3,14 @@ package portainer
 import (
 	"context"
 
+	"github.com/portainer/portainer-updater/dockerstandalone"
+	"github.com/portainer/portainer-updater/dockerswarm"
+	"github.com/portainer/portainer-updater/kubernetes"
+
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
-	"github.com/portainer/portainer-updater/dockerstandalone"
-	"github.com/portainer/portainer-updater/dockerswarm"
-	"github.com/portainer/portainer-updater/kubernetes"
 	"github.com/rs/zerolog/log"
 )
 
@@ -86,7 +87,7 @@ func (r *Command) runStandalone(ctx context.Context) error {
 		if r.License != "" {
 			config.Env = append(config.Env, "PORTAINER_LICENSE_KEY="+r.License)
 		}
-	})
+	}, dockerstandalone.UpdateOptions{Agent: false})
 }
 
 func (r *Command) runSwarm(ctx context.Context) error {

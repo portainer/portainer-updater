@@ -3,12 +3,13 @@ package agent
 import (
 	"context"
 
+	"github.com/portainer/portainer-updater/dockerstandalone"
+	"github.com/portainer/portainer-updater/dockerswarm"
+
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
-	"github.com/portainer/portainer-updater/dockerstandalone"
-	"github.com/portainer/portainer-updater/dockerswarm"
 	"github.com/rs/zerolog/log"
 )
 
@@ -93,5 +94,5 @@ func (r *AgentCommand) runStandalone(ctx context.Context, dockerCli *client.Clie
 	return dockerstandalone.Update(ctx, dockerCli, oldContainer.ID, r.Image, func(config *container.Config) {
 		config.Env = dockerstandalone.UpdateEnv(config.Env, r.ScheduleId)
 		config.Labels = dockerstandalone.UpdateLabels(config.Labels, r.ScheduleId)
-	})
+	}, dockerstandalone.UpdateOptions{Agent: true})
 }
