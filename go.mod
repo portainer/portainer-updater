@@ -1,6 +1,6 @@
 module github.com/portainer/portainer-updater
 
-go 1.23.10
+go 1.24.4
 
 require (
 	github.com/Masterminds/semver v1.5.0
