@@ -26,7 +26,7 @@ func TestUpdate_monitorAgentHealthMissingBinary(t *testing.T) {
 
 	response := setUpAgentContainerWithoutHealthyBinary(t, ctx, dockerCli)
 
-	ok, err := monitorAgentHealth(ctx, dockerCli, response.ID)
+	ok, err := monitorAgentHealth(ctx, dockerCli, response.ID, false)
 
 	assert.NoError(t, err, "should not return error when the healthy binary is missing")
 	assert.True(t, ok, "should be true because the healthy binary is missing and the agent health is thereby assumed to be ok")
