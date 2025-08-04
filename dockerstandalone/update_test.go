@@ -3,13 +3,16 @@ package dockerstandalone
 import (
 	"bytes"
 	"context"
+	"io"
 	"testing"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUpdate_monitorAgentHealthMissingBinary(t *testing.T) {
@@ -36,14 +39,19 @@ func TestUpdate_monitorAgentHealthMissingBinary(t *testing.T) {
 // setUpAgentContainerWithoutHealthyBinary creates a container without the healthy binary and returns its ID.
 // Note, the container is removed in the test cleanup.
 func setUpAgentContainerWithoutHealthyBinary(t *testing.T, ctx context.Context, dockerCli *client.Client) container.CreateResponse {
+	imgRd, err := dockerCli.ImagePull(ctx, "busybox:latest", image.PullOptions{})
+	require.NoError(t, err)
+
+	_, err = io.Copy(io.Discard, imgRd)
+	require.NoError(t, err)
+	require.NoError(t, imgRd.Close())
+
 	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
 		Image:      "busybox:latest",
 		Cmd:        []string{"tail", "-f", "/dev/null"},
 		StopSignal: "SIGKILL",
 	}, nil, nil, nil, t.Name())
-	if err != nil {
-		t.Fatalf("Failed to create container: %v", err)
-	}
+	require.NoError(t, err, "error when creating container")
 
 	t.Cleanup(func() {
 		timeout := 5
@@ -52,23 +60,27 @@ func setUpAgentContainerWithoutHealthyBinary(t *testing.T, ctx context.Context, 
 	})
 
 	// Start container
-	if err := dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		t.Fatalf("Failed to start container: %v", err)
-	}
+	err = dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	require.NoError(t, err, "error when starting container")
 
 	// Inspect container to verify env vars
 	inspect, err := dockerCli.ContainerInspect(ctx, resp.ID)
-	if err != nil {
-		t.Fatalf("Failed to inspect container: %v", err)
-	}
+	require.NoError(t, err, "error when inspecting container")
 
 	for range 10 {
 		if inspect.State.Running {
 			break
 		}
+
 		time.Sleep(300 * time.Millisecond)
 	}
-	assert.True(t, inspect.State.Running)
+
+	require.True(t, inspect.State.Running)
 
 	return resp
+}
+
+func TestBuildContainerName(t *testing.T) {
+	require.Equal(t, "x-update", buildContainerName("x"))
+	require.Equal(t, "x", buildContainerName("x-update"))
 }

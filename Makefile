@@ -15,6 +15,7 @@ endif
 PLATFORM?=$(shell go env GOOS)
 ARCH?=$(shell go env GOARCH)
 GIT_COMMIT?=$(shell git log -1 --format=%h)
+GOTESTSUM=go run gotest.tools/gotestsum@latest
 
 pre:
 	mkdir -pv $(dist) 
@@ -39,6 +40,9 @@ clean:
 
 lint:
 	golangci-lint run --timeout=10m -c .golangci.yaml
+
+test:
+	$(GOTESTSUM) --format pkgname-and-test-fails --format-hide-empty-pkg --hide-summary skipped -- -cover -covermode=atomic -coverprofile=coverage.out ./...
 
 format:
 	go fmt ./...

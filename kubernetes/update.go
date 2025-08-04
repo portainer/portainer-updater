@@ -3,11 +3,11 @@ package kubernetes
 import (
 	"context"
 	"fmt"
-	"github.com/segmentio/encoding/json"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/segmentio/encoding/json"
 	appV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
