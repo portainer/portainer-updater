@@ -17,9 +17,12 @@ linters:
 
 linters-settings:
   forbidigo:
+    analyze-types: true
     forbid:
       - p: ^tls\.Config$
         msg: 'Use crypto.CreateTLSConfiguration() instead'
+      - p: ^tls\.Config\.(InsecureSkipVerify|MinVersion|MaxVersion|CipherSuites|CurvePreferences)$
+        msg: 'Do not set this field directly, use crypto.CreateTLSConfiguration() instead'
   depguard:
     rules:
       main:
