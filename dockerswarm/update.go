@@ -3,17 +3,18 @@ package dockerswarm
 import (
 	"bytes"
 	"context"
-	"github.com/docker/docker/api/types/image"
 	"io"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/portainer/portainer-updater/utils"
+
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
-	"github.com/portainer/portainer-updater/utils"
 	"github.com/rs/zerolog/log"
 )
 
@@ -50,8 +51,8 @@ func Update(ctx context.Context, dockerCli *client.Client, imageName string, ser
 	service.Spec.TaskTemplate.ContainerSpec.Image = imageName
 
 	updateConfig(service.Spec.TaskTemplate.ContainerSpec)
-	prevVersion := service.Meta.Version
-	service.Meta.Version = swarm.Version{Index: service.Meta.Version.Index + 1}
+	prevVersion := service.Version
+	service.Version = swarm.Version{Index: service.Version.Index + 1}
 
 	service.Spec.UpdateConfig = &swarm.UpdateConfig{
 		FailureAction: swarm.UpdateFailureActionRollback,
