@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/docker/docker/api/types/swarm"
@@ -13,9 +12,7 @@ import (
 )
 
 func TestUpdateVersionIncrement(t *testing.T) {
-	sp := os.Getenv("SKIP_PULL")
-	os.Setenv("SKIP_PULL", "true")
-	defer os.Setenv("SKIP_PULL", sp)
+	t.Setenv("SKIP_PULL", "true")
 
 	swarmService := &swarm.Service{
 		ID: "swarm-id",
