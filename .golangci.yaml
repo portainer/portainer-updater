@@ -19,6 +19,7 @@ linters:
     - unconvert
     - usetesting
     - zerologlint
+    - testifylint
   settings:
     depguard:
       rules:

@@ -38,5 +38,5 @@ func TestUpdateVersionIncrement(t *testing.T) {
 
 	err = Update(context.Background(), dockerCli, "image-name", swarmService, func(*swarm.ContainerSpec) {})
 	require.Error(t, err)
-	require.Equal(t, swarmService.Version.Index, uint64(2))
+	require.Equal(t, uint64(2), swarmService.Version.Index)
 }
