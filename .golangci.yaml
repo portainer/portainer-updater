@@ -37,12 +37,16 @@ linters:
               desc: use github.com/portainer/portainer/pkg/libhttp
             - pkg: golang.org/x/crypto
               desc: golang.org/x/crypto is not allowed because of FIPS mode
+            - pkg: github.com/ProtonMail/go-crypto/openpgp
+              desc: github.com/ProtonMail/go-crypto/openpgp is not allowed because of FIPS mode
     forbidigo:
       forbid:
         - pattern: ^tls\.Config$
           msg: Use crypto.CreateTLSConfiguration() instead
         - pattern: ^tls\.Config\.(InsecureSkipVerify|MinVersion|MaxVersion|CipherSuites|CurvePreferences)$
           msg: Do not set this field directly, use crypto.CreateTLSConfiguration() instead
+        - pattern: ^object\.(Commit|Tag)\.Verify$
+          msg: "Not allowed because of FIPS mode"
       analyze-types: true
   exclusions:
     generated: lax
