@@ -35,6 +35,8 @@ linters:
               desc: use github.com/portainer/portainer/pkg/libcrypto
             - pkg: github.com/portainer/libhttp
               desc: use github.com/portainer/portainer/pkg/libhttp
+            - pkg: golang.org/x/crypto
+              desc: golang.org/x/crypto is not allowed because of FIPS mode
     forbidigo:
       forbid:
         - pattern: ^tls\.Config$
