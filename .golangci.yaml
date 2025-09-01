@@ -47,6 +47,8 @@ linters:
           msg: Do not set this field directly, use crypto.CreateTLSConfiguration() instead
         - pattern: ^object\.(Commit|Tag)\.Verify$
           msg: "Not allowed because of FIPS mode"
+        - pattern: ^(types\.SystemContext\.)?(DockerDaemonInsecureSkipTLSVerify|DockerInsecureSkipTLSVerify|OCIInsecureSkipTLSVerify)$
+          msg: "Not allowed because of FIPS mode"
       analyze-types: true
   exclusions:
     generated: lax
