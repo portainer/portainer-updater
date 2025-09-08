@@ -13,26 +13,51 @@ import (
 	"github.com/docker/docker/client"
 )
 
-var ErrBinaryNotFound = errors.New(`"healthy" binary not found in container`)
+var (
+	ErrBinaryNotFound       = errors.New(`"healthy" binary not found in container`)
+	ErrProcessFailedToStart = errors.New("process failed to start in container")
+	ErrFlagNotSupported     = errors.New("--health-check flag not supported in this container")
+)
 
-type healthChecker struct{}
+type healthCheck func(ctx context.Context, cli *client.Client, containerID string) error
 
-var defaultHealthChecker healthChecker
-
-var healthyBinary = func() string {
+var agentHealthyBinary = func() string {
 	binary := "healthy"
+	// This does not ensure the binary is actually a Windows binary, but it relies on the high likelihood
+	// that if the updater is running on Windows, the container is also Windows-based.
+	// A more robust solution would be to inspect the agent container image OS.
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
 	return binary
 }()
 
-func (f healthChecker) healthy(ctx context.Context, cli *client.Client, containerID string) error {
-	cmd := []string{healthyBinary}
+func portainerHealthy(ctx context.Context, cli *client.Client, containerID string) error {
+	cmd := []string{"portainer", "--health-check"}
 
-	if err := f.execInContainer(ctx, cli, containerID, cmd); err != nil {
-		if f.isBinaryNotFoundError(err) {
-			return ErrBinaryNotFound
+	err := healthyWithCmd(ctx, cli, containerID, cmd)
+	if errors.Is(err, ErrProcessFailedToStart) {
+		err = errors.Join(err, ErrFlagNotSupported)
+	}
+
+	return err
+}
+
+func agentHealthy(ctx context.Context, cli *client.Client, containerID string) error {
+	cmd := []string{agentHealthyBinary}
+
+	err := healthyWithCmd(ctx, cli, containerID, cmd)
+	if errors.Is(err, ErrProcessFailedToStart) {
+		err = errors.Join(err, ErrBinaryNotFound)
+	}
+
+	return err
+}
+
+func healthyWithCmd(ctx context.Context, cli *client.Client, containerID string, cmd []string) error {
+	if err := execInContainer(ctx, cli, containerID, cmd); err != nil {
+		if isProcessFailedToStart(err) {
+			return ErrProcessFailedToStart
 		}
 
 		return err
@@ -41,7 +66,7 @@ func (f healthChecker) healthy(ctx context.Context, cli *client.Client, containe
 	return nil
 }
 
-func (f healthChecker) execInContainer(ctx context.Context, cli *client.Client, containerID string, cmd []string) error {
+func execInContainer(ctx context.Context, cli *client.Client, containerID string, cmd []string) error {
 	execOptions := container.ExecOptions{
 		Cmd:          cmd,
 		AttachStdout: true,
@@ -83,7 +108,7 @@ func (f healthChecker) execInContainer(ctx context.Context, cli *client.Client, 
 	return fmt.Errorf("exec command timed out")
 }
 
-func (f healthChecker) isBinaryNotFoundError(err error) bool {
+func isProcessFailedToStart(err error) bool {
 	msg := strings.ToLower(err.Error())
 
 	return strings.Contains(msg, "unable to start container process")

@@ -24,7 +24,8 @@ import (
 var errUpdateFailure = errors.New("update failure")
 
 type UpdateOptions struct {
-	Agent bool
+	Agent               bool
+	PortainerAutoUpdate bool
 }
 
 func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string, imageName string, updateConfig func(*container.Config), options UpdateOptions) error {
@@ -118,17 +119,25 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
 	}
 
-	if options.Agent {
+	switch {
+	case options.Agent:
 		healthy, err = monitorAgentHealth(ctx, dockerCli, newContainerID, IsAsyncAgent(oldContainer))
-		if err != nil {
-			log.Err(err).
-				Msg("Unable to monitor agent container health")
-			return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
-		}
+	case options.PortainerAutoUpdate:
+		healthy, err = monitorPortainerHealth(ctx, dockerCli, newContainerID)
+	default:
+		err = nil
+		healthy = true
+	}
+	if err != nil {
+		log.Err(err).
+			Bool("PortainerAutoUpdate", options.PortainerAutoUpdate).
+			Bool("Agent", options.Agent).
+			Msg("Unable to monitor extended container health")
 
-		if !healthy {
-			return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
-		}
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+	}
+	if !healthy {
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
 	}
 
 	log.Info().
@@ -153,7 +162,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 	return nil
 }
 
-func cleanupContainerAndError(ctx context.Context, dockerCli *client.Client, oldContainerId, newContainerID string) error {
+func cleanupContainerAndError(ctx context.Context, dockerCli client.APIClient, oldContainerId, newContainerID string) error {
 	log.Info().
 		Msg("An error occurred during the update process - removing newly created container")
 
@@ -293,24 +302,38 @@ func monitorAgentHealth(ctx context.Context, dockerCli *client.Client, container
 	log.Info().
 		Str("containerId", containerID).
 		Msg("Monitoring new agent container health by checking for the health file")
-	var lastErr error
 	backoffBase := 5
 	if asyncMode {
 		backoffBase = 60
 	}
+
+	return monitorExtendedHealth(ctx, dockerCli, containerID, agentHealthy, backoffBase, "Agent")
+}
+
+func monitorPortainerHealth(ctx context.Context, dockerCli *client.Client, containerID string) (bool, error) {
+	log.Info().
+		Str("containerId", containerID).
+		Msg("Monitoring new portainer container health by using its health check flag")
+	backoffBase := 5
+
+	return monitorExtendedHealth(ctx, dockerCli, containerID, portainerHealthy, backoffBase, "Portainer")
+}
+
+func monitorExtendedHealth(ctx context.Context, dockerCli *client.Client, containerID string, healthCheck healthCheck, backoffBase int, name string) (bool, error) {
+	var err error
 	for i := range 10 {
-		lastErr = defaultHealthChecker.healthy(ctx, dockerCli, containerID)
-		if lastErr == nil {
+		err = healthCheck(ctx, dockerCli, containerID)
+		if err == nil {
 			log.Info().
 				Str("containerId", containerID).
-				Msg("Agent health check passed. The agent is healthy.")
+				Msgf("%s health check passed. The server is healthy.", name)
 			return true, nil
 		}
-		if errors.Is(lastErr, ErrBinaryNotFound) {
+		if errors.Is(err, ErrBinaryNotFound) {
 			log.Warn().
 				Err(ErrBinaryNotFound).
 				Str("containerId", containerID).
-				Msg("Agent health cannot be checked. Assuming health check passed.")
+				Msgf("%s health cannot be checked. Assuming health check passed.", name)
 
 			return true, nil
 		}
@@ -318,16 +341,16 @@ func monitorAgentHealth(ctx context.Context, dockerCli *client.Client, container
 		backoff := backoffBase * i
 		log.Info().
 			Str("containerId", containerID).
-			Err(lastErr).
+			Err(err).
 			Int("backoff", backoff).
-			Msg("Agent health check failed. Retrying after backoff")
+			Msgf("%s health check failed. Retrying after backoff", name)
 		time.Sleep(time.Duration(backoff) * time.Second)
 	}
 
 	log.Error().
-		Msg("Agent health check timed out. Exiting without updating the container")
+		Msgf("%s health check timed out. Exiting without updating the container", name)
 
-	return false, errors.Wrap(lastErr, "Agent health check timed out")
+	return false, errors.Wrapf(err, "%s health check timed out", name)
 }
 
 func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId string) (bool, error) {
@@ -423,7 +446,7 @@ func createContainer(ctx context.Context, dockerCli *client.Client, imageName, t
 	return newContainer.ID, nil
 }
 
-func printLogsToStdout(ctx context.Context, dockerCli *client.Client, containerID string) {
+func printLogsToStdout(ctx context.Context, dockerCli client.APIClient, containerID string) {
 	log.Debug().
 		Str("containerId", containerID).
 		Msg("Printing container logs to stdout")
