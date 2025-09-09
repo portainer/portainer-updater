@@ -28,7 +28,7 @@ const fiveMinutes = int64(300)
 
 var errUpdateFailure = errors.New("update failure")
 
-func Update(ctx context.Context, cli *kubernetes.Clientset, imageName string, deployment *appV1.Deployment, licenseKey string) error {
+func Update(ctx context.Context, cli kubernetes.Interface, imageName string, deployment *appV1.Deployment, licenseKey string) error {
 	log.Info().
 		Str("deploymentName", deployment.Name).
 		Str("image", imageName).

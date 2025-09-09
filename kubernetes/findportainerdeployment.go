@@ -9,7 +9,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func FindPortainerDeployment(ctx context.Context, cli *kubernetes.Clientset) (*appV1.Deployment, error) {
+func FindPortainerDeployment(ctx context.Context, cli kubernetes.Interface) (*appV1.Deployment, error) {
 	list, err := cli.AppsV1().Deployments("portainer").List(ctx, metaV1.ListOptions{LabelSelector: "app.kubernetes.io/name=portainer"})
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to list deployments")

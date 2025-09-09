@@ -1,6 +1,6 @@
-# Portainer-upgrader
+# Portainer-updater
 
-A tool to upgrade the Portainer software.
+A tool to update Portainer software.
 
 Build:
 
@@ -26,3 +26,13 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock registry.example.co
 # Via container ID
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock portainer/portainer-updater agent-update e9b3e57700ad 2.12.2
 ```
+
+## Portainer update
+```
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock portainer/portainer-updater:latest --image="portainer/portainer-ee:latest" 
+```
+
+## Development
+Use `PORTAINER_UPDATER_DEBUG=1` for improved development experience.
+It will enable:
+- Updating Portainer deployment in Kubernetes without needing to depend on the updater being executed inside a cluster. See [kubernetes.GetClient()](./kubernetes/client.go) for more info. 
