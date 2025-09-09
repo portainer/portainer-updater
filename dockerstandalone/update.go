@@ -329,9 +329,9 @@ func monitorExtendedHealth(ctx context.Context, dockerCli *client.Client, contai
 				Msgf("%s health check passed. The server is healthy.", name)
 			return true, nil
 		}
-		if errors.Is(err, ErrBinaryNotFound) {
+		if errors.Is(err, ErrBinaryNotFound) || errors.Is(err, ErrFlagNotSupported) {
 			log.Warn().
-				Err(ErrBinaryNotFound).
+				Err(err).
 				Str("containerId", containerID).
 				Msgf("%s health cannot be checked. Assuming health check passed.", name)
 

@@ -109,5 +109,5 @@ func (r *Command) runSwarm(ctx context.Context) error {
 		if r.License != "" {
 			config.Env = append(config.Env, "PORTAINER_LICENSE_KEY="+r.License)
 		}
-	})
+	}, dockerswarm.UpdateOptions{})
 }

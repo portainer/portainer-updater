@@ -33,10 +33,10 @@ var agentHealthyBinary = func() string {
 }()
 
 func portainerHealthy(ctx context.Context, cli *client.Client, containerID string) error {
-	cmd := []string{"portainer", "--health-check"}
+	cmd := []string{"/portainer", "--health-check"}
 
 	err := healthyWithCmd(ctx, cli, containerID, cmd)
-	if errors.Is(err, ErrProcessFailedToStart) {
+	if errors.Is(err, ErrProcessFailedToStart) || isUnknownFlagError(err) {
 		err = errors.Join(err, ErrFlagNotSupported)
 	}
 
@@ -112,4 +112,10 @@ func isProcessFailedToStart(err error) bool {
 	msg := strings.ToLower(err.Error())
 
 	return strings.Contains(msg, "unable to start container process")
+}
+
+func isUnknownFlagError(err error) bool {
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "unknown long flag '--health-check'")
 }
