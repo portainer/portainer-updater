@@ -64,8 +64,7 @@ func (r *Command) runKubernetes(ctx context.Context) error {
 		Str("deployment", deployment.Name).
 		Msg("Found deployment")
 
-	return kubernetes.Update(ctx, cli, r.Image, deployment, r.License)
-
+	return kubernetes.Update(ctx, cli, r.Image, deployment, r.License, kubernetes.UpdateOptions{})
 }
 
 func (r *Command) runStandalone(ctx context.Context) error {

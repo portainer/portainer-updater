@@ -24,11 +24,13 @@ type (
 	}
 )
 
-const fiveMinutes = int64(300)
-
 var errUpdateFailure = errors.New("update failure")
 
-func Update(ctx context.Context, cli kubernetes.Interface, imageName string, deployment *appV1.Deployment, licenseKey string) error {
+type UpdateOptions struct {
+	PortainerAutoUpdate bool
+}
+
+func Update(ctx context.Context, cli kubernetes.Interface, imageName string, deployment *appV1.Deployment, licenseKey string, options UpdateOptions) error {
 	log.Info().
 		Str("deploymentName", deployment.Name).
 		Str("image", imageName).
@@ -44,8 +46,18 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 		patch = append(patch, createEnvVarPatch(licenseKey, deployment.Spec.Template.Spec.Containers[0].Env))
 	}
 
-	err := updateDeployment(ctx, deployCli, deployment.Name, imageName, patch)
+	defaultTimeout := int64((5 * time.Minute).Seconds()) // 5 minutes by default
+	timeout := defaultTimeout
+
+	if options.PortainerAutoUpdate {
+		patch = append(patch, createHealthCheckPatch())
+		timeout = int64((3 * time.Hour).Seconds()) // 3 hours if Portainer Auto Update is enabled, to allow for long migrations
+	}
+
+	err := updateDeployment(ctx, deployCli, deployment.Name, imageName, patch, &timeout)
 	if err != nil {
+		// Reset patch so that new patches can be applied cleanly
+		patch = []jsonPatch{}
 		log.Err(err).
 			Str("deploymentName", deployment.Name).
 			Msg("Unable to update deployment")
@@ -54,7 +66,11 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 			Str("deploymentName", deployment.Name).
 			Msg("Rolling back deployment")
 
-		err := updateDeployment(ctx, deployCli, deployment.Name, originalImage, nil)
+		if options.PortainerAutoUpdate {
+			patch = append(patch, removeHealthCheckPatch())
+		}
+
+		err := updateDeployment(ctx, deployCli, deployment.Name, originalImage, patch, &defaultTimeout)
 		if err != nil {
 			log.Err(err).
 				Str("deploymentName", deployment.Name).
@@ -70,6 +86,36 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 		Msg("Update process completed")
 
 	return nil
+}
+
+func createHealthCheckPatch() jsonPatch {
+	return jsonPatch{
+		Op:   "add",
+		Path: "/spec/template/spec/containers/0/readinessProbe",
+		Value: map[string]interface{}{
+			"exec": map[string]interface{}{
+				"command": []string{"/portainer", "--health-check"},
+			},
+			"initialDelaySeconds": 5,
+			"periodSeconds":       5,
+			"timeoutSeconds":      5,
+			// A finite number of retries is supported.
+			// Each retry takes in the best case a few milliseconds and worst case 5 seconds, and is run every 5 seconds.
+			// Because migrations can take a long time, we want to allow it to run for 2 hours.
+			// So 2 hours / 5 seconds = 1440 retries, for the quickest possible retry.
+			// And 2 hours / 10 seconds = 720 retries, for the slowest possible retry.
+			// It's unlikely that the healthcheck will take the full 5 seconds every time, so 1000 retries should be sufficient.
+			// Thus, the maximum time the health check can take is 1000 * 10 seconds = 10000 seconds = ~2.78 hours.
+			"failureThreshold": 1000,
+		},
+	}
+}
+
+func removeHealthCheckPatch() jsonPatch {
+	return jsonPatch{
+		Op:   "remove",
+		Path: "/spec/template/spec/containers/0/readinessProbe",
+	}
 }
 
 func createEnvVarPatch(licenseKey string, envVars []coreV1.EnvVar) jsonPatch {
@@ -105,7 +151,6 @@ func createEnvVarPatch(licenseKey string, envVars []coreV1.EnvVar) jsonPatch {
 		Path:  "/spec/template/spec/containers/0/env/-",
 		Value: licenseKeyEnvVar,
 	}
-
 }
 
 func Index[E any](slice []E, predicate func(E) bool) (int, bool) {
@@ -118,7 +163,7 @@ func Index[E any](slice []E, predicate func(E) bool) (int, bool) {
 	return -1, false
 }
 
-func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName, imageName string, morePatch []jsonPatch) error {
+func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName, imageName string, morePatch []jsonPatch, timeoutSeconds *int64) error {
 	patch := append([]jsonPatch{
 		{
 			Op:    "replace",
@@ -142,18 +187,13 @@ func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, dep
 		Str("deploymentName", deploymentName).
 		Msg("Waiting for deployment to complete")
 
-	return waitForDeployment(ctx, deployCli, newDeployment.Name, newDeployment.UID)
+	return waitForDeployment(ctx, deployCli, newDeployment.Name, newDeployment.UID, timeoutSeconds)
 }
 
-func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName string, uid types.UID) error {
-	// for some reason when we start, we have both updatedReplicas and readyReplicas set to 1
-	// we will wait 5 seconds before starting to watch
-	time.Sleep(5 * time.Second)
-
-	timeoutSeconds := fiveMinutes
+func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName string, uid types.UID, timeoutSeconds *int64) error {
 	watcher, err := deployCli.Watch(ctx, metaV1.ListOptions{
 		FieldSelector:  fmt.Sprintf("metadata.name=%s", deploymentName),
-		TimeoutSeconds: &timeoutSeconds,
+		TimeoutSeconds: timeoutSeconds,
 	})
 	if err != nil {
 		log.Err(err).
@@ -188,7 +228,17 @@ func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, de
 			Int32("UpdatedReplicas", deployment.Status.UpdatedReplicas).
 			Msg("checking replicas condition")
 
-		if deployment.Status.UpdatedReplicas > 0 && deployment.Status.ReadyReplicas > 0 {
+		specReplicas := int32(1)
+		if deployment.Spec.Replicas != nil {
+			specReplicas = *deployment.Spec.Replicas
+		}
+
+		deploymentOk := deployment.Status.ObservedGeneration >= deployment.Generation && // Ensure the deployment controller has processed the latest generation. This avoids a race condition caused by the deployment controller not having processed the latest generation yet.
+			deployment.Status.UpdatedReplicas == specReplicas &&
+			deployment.Status.ReadyReplicas == specReplicas &&
+			deployment.Status.AvailableReplicas == specReplicas
+
+		if deploymentOk {
 			return nil
 		}
 	}
