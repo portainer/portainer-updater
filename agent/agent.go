@@ -71,7 +71,9 @@ func (r *AgentCommand) runSwarm(ctx context.Context, dockerCli *client.Client) e
 	return dockerswarm.Update(ctx, dockerCli, r.Image, service, func(config *swarm.ContainerSpec) {
 		config.Env = dockerstandalone.UpdateEnv(config.Env, r.ScheduleId)
 		config.Labels = dockerstandalone.UpdateLabels(config.Labels, r.ScheduleId)
-	}, dockerswarm.UpdateOptions{})
+	}, dockerswarm.UpdateOptions{
+		ExtendedHealthCheck: false,
+	})
 }
 
 func (r *AgentCommand) runStandalone(ctx context.Context, dockerCli *client.Client) error {

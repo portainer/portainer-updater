@@ -25,7 +25,7 @@ var errUpdateFailure = errors.New("update failure")
 
 type UpdateOptions struct {
 	Agent               bool
-	PortainerAutoUpdate bool
+	ExtendedHealthCheck bool
 }
 
 func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string, imageName string, updateConfig func(*container.Config), options UpdateOptions) error {
@@ -122,7 +122,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 	switch {
 	case options.Agent:
 		healthy, err = monitorAgentHealth(ctx, dockerCli, newContainerID, IsAsyncAgent(oldContainer))
-	case options.PortainerAutoUpdate:
+	case options.ExtendedHealthCheck:
 		healthy, err = monitorPortainerHealth(ctx, dockerCli, newContainerID)
 	default:
 		err = nil
@@ -130,7 +130,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 	}
 	if err != nil {
 		log.Err(err).
-			Bool("PortainerAutoUpdate", options.PortainerAutoUpdate).
+			Bool("ExtendedHealthCheck", options.ExtendedHealthCheck).
 			Bool("Agent", options.Agent).
 			Msg("Unable to monitor extended container health")
 

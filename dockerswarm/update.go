@@ -20,7 +20,7 @@ import (
 )
 
 type UpdateOptions struct {
-	PortainerAutoUpdate bool
+	ExtendedHealthCheck bool
 }
 
 var errUpdateFailure = errors.New("update failure")
@@ -66,7 +66,7 @@ func Update(ctx context.Context, dockerCli client.APIClient, imageName string, s
 
 	awaitCompletion := 5 * time.Minute
 
-	if options.PortainerAutoUpdate {
+	if options.ExtendedHealthCheck {
 		service.Spec.TaskTemplate.ContainerSpec.Healthcheck = &container.HealthConfig{
 			Test:     []string{"CMD", "/portainer", "--health-check"},
 			Interval: 5 * time.Second,

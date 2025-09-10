@@ -27,7 +27,7 @@ type (
 var errUpdateFailure = errors.New("update failure")
 
 type UpdateOptions struct {
-	PortainerAutoUpdate bool
+	ExtendedHealthCheck bool
 }
 
 func Update(ctx context.Context, cli kubernetes.Interface, imageName string, deployment *appV1.Deployment, licenseKey string, options UpdateOptions) error {
@@ -49,7 +49,7 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 	defaultTimeout := int64((5 * time.Minute).Seconds()) // 5 minutes by default
 	timeout := defaultTimeout
 
-	if options.PortainerAutoUpdate {
+	if options.ExtendedHealthCheck {
 		patch = append(patch, createHealthCheckPatch())
 		timeout = int64((3 * time.Hour).Seconds()) // 3 hours if Portainer Auto Update is enabled, to allow for long migrations
 	}
@@ -66,7 +66,7 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 			Str("deploymentName", deployment.Name).
 			Msg("Rolling back deployment")
 
-		if options.PortainerAutoUpdate {
+		if options.ExtendedHealthCheck {
 			patch = append(patch, removeHealthCheckPatch())
 		}
 

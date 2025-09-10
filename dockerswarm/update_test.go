@@ -44,7 +44,7 @@ func TestUpdateVersionIncrement(t *testing.T) {
 	require.Equal(t, uint64(2), swarmService.Version.Index)
 }
 
-func TestUpdateWithPortainerAutoUpdate(t *testing.T) {
+func TestUpdateWithExtendedHealthCheck(t *testing.T) {
 	t.Setenv("SKIP_PULL", "true")
 
 	swarmService := &swarm.Service{
@@ -81,7 +81,7 @@ func TestUpdateWithPortainerAutoUpdate(t *testing.T) {
 		}
 
 		err := Update(context.Background(), dockerClient, imageName, swarmService, func(*swarm.ContainerSpec) {}, UpdateOptions{
-			PortainerAutoUpdate: true,
+			ExtendedHealthCheck: true,
 		})
 
 		require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestUpdateWithPortainerAutoUpdate(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			start := time.Now()
 			err := Update(context.Background(), dockerClient, imageName, swarmService, func(*swarm.ContainerSpec) {}, UpdateOptions{
-				PortainerAutoUpdate: true,
+				ExtendedHealthCheck: true,
 			})
 			end := time.Now()
 
@@ -133,7 +133,7 @@ func TestUpdateWithPortainerAutoUpdate(t *testing.T) {
 			start := time.Now()
 
 			err := Update(context.Background(), dockerClient, imageName, swarmService, func(*swarm.ContainerSpec) {}, UpdateOptions{
-				PortainerAutoUpdate: true,
+				ExtendedHealthCheck: true,
 			})
 			end := time.Now()
 

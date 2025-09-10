@@ -56,7 +56,7 @@ func TestUpdateDeployment(t *testing.T) {
 	}()
 
 	err = Update(t.Context(), client, "new-image", deployment, "LICENSE123", UpdateOptions{
-		PortainerAutoUpdate: false,
+		ExtendedHealthCheck: false,
 	})
 	require.NoError(t, err)
 
@@ -72,7 +72,7 @@ func TestUpdateDeployment(t *testing.T) {
 	assert.Equal(t, int32(1), updated.Status.AvailableReplicas)
 }
 
-func TestUpdateWithPortainerAutoUpdateTimeout(t *testing.T) {
+func TestUpdateWithExtendedHealthCheckTimeout(t *testing.T) {
 	// This test asserts that the Update function returns errUpdateFailure
 	// if the deployment does not become ready within the extended timeout
 	// period when Portainer Auto Update is enabled.
@@ -107,7 +107,7 @@ func TestUpdateWithPortainerAutoUpdateTimeout(t *testing.T) {
 		}()
 
 		err = Update(t.Context(), client, "new-image", deployment, "LICENSE123", UpdateOptions{
-			PortainerAutoUpdate: true,
+			ExtendedHealthCheck: true,
 		})
 		require.ErrorIs(t, errUpdateFailure, err)
 	})
