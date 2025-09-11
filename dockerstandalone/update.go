@@ -3,7 +3,6 @@ package dockerstandalone
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
@@ -12,13 +11,10 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/segmentio/encoding/json"
 )
 
 var errUpdateFailure = errors.New("update failure")
@@ -201,20 +197,9 @@ func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) 
 		return false, nil
 	}
 
-	imagePullOptions := image.PullOptions{}
-	if os.Getenv("REGISTRY_USED") != "" {
-		// Authenticate to the private registry
-		// ref@https://docs.docker.com/engine/api/sdk/examples/#pull-an-image-with-authentication
-		authConfig := registry.AuthConfig{
-			Username: os.Getenv("REGISTRY_USERNAME"),
-			Password: os.Getenv("REGISTRY_PASSWORD"),
-		}
-
-		encodedJSON, err := json.Marshal(authConfig)
-		if err != nil {
-			return false, err
-		}
-		imagePullOptions.RegistryAuth = base64.URLEncoding.EncodeToString(encodedJSON)
+	imagePullOptions, err := MakeImagePullOptions()
+	if err != nil {
+		return false, fmt.Errorf("unable to make image pull options: %w", err)
 	}
 
 	log.Debug().

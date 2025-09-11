@@ -2,17 +2,32 @@ package dockerswarm
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUpdateSameTag(t *testing.T) {
+	dockerClient := &mockDockerClient{}
+	withPullImage(dockerClient, nil, true)
+	swarmService := setUpSwarmService()
+	imageName := swarmService.Spec.TaskTemplate.ContainerSpec.Image
+
+	err := Update(t.Context(), dockerClient, imageName, swarmService, nil, UpdateOptions{})
+
+	require.NoError(t, err, "should not return an error as the image is up to date, and no update is required")
+}
 
 func TestUpdateVersionIncrement(t *testing.T) {
 	t.Setenv("SKIP_PULL", "true")
@@ -47,20 +62,7 @@ func TestUpdateVersionIncrement(t *testing.T) {
 func TestUpdateWithExtendedHealthCheck(t *testing.T) {
 	t.Setenv("SKIP_PULL", "true")
 
-	swarmService := &swarm.Service{
-		ID: "swarm-id",
-		Spec: swarm.ServiceSpec{
-			TaskTemplate: swarm.TaskSpec{
-				ContainerSpec: &swarm.ContainerSpec{
-					Image: "image-name",
-				},
-			},
-		},
-		Meta: swarm.Meta{
-			Version: swarm.Version{Index: 1},
-		},
-	}
-
+	swarmService := setUpSwarmService()
 	imageName := "image-name"
 
 	defaultAssertServiceUpdate := func(t *testing.T, service swarm.ServiceSpec) {
@@ -145,7 +147,35 @@ func TestUpdateWithExtendedHealthCheck(t *testing.T) {
 			require.WithinDuration(t, start, end, expectedDurationWithMargin, "should return after %d seconds", int(expectedDuration.Seconds()))
 		})
 	})
+}
 
+func TestPullImageSkipPull(t *testing.T) {
+	t.Setenv("SKIP_PULL", "1")
+
+	ok, err := pullImage(t.Context(), nil, "image-name")
+
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
+func TestPullImage(t *testing.T) {
+	dockerClient := &mockDockerClient{}
+	withPullImage(dockerClient, nil, false)
+
+	ok, err := pullImage(t.Context(), dockerClient, "image-name")
+
+	require.NoError(t, err)
+	require.True(t, ok)
+}
+
+func TestPullImageFail(t *testing.T) {
+	dockerClient := &mockDockerClient{}
+	withPullImage(dockerClient, errors.New("error pulling image"), false)
+
+	ok, err := pullImage(t.Context(), dockerClient, "image-name")
+
+	require.ErrorIs(t, err, errUpdateFailure)
+	require.False(t, ok)
 }
 
 type mockDockerClient struct {
@@ -157,6 +187,9 @@ type mockDockerClient struct {
 
 	errServiceInspectWithRaw error
 	updateStates             []swarm.UpdateState
+
+	errImagePull        error
+	imagePullReadCloser io.ReadCloser
 }
 
 func (m *mockDockerClient) ServiceUpdate(ctx context.Context, serviceID string, version swarm.Version, service swarm.ServiceSpec, options types.ServiceUpdateOptions) (swarm.ServiceUpdateResponse, error) {
@@ -179,4 +212,34 @@ func (m *mockDockerClient) ServiceInspectWithRaw(ctx context.Context, serviceID 
 			State: statusUpdate,
 		},
 	}, nil, m.errServiceInspectWithRaw
+}
+
+func (m *mockDockerClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
+	return m.imagePullReadCloser, m.errImagePull
+}
+
+func withPullImage(mockClient *mockDockerClient, err error, upToDate bool) {
+	output := `{"status":"Image is up to date for image-name"}`
+	if upToDate {
+		output = `{"status":"Image is up to date for image-name"}`
+	}
+
+	mockClient.imagePullReadCloser = io.NopCloser(strings.NewReader(output))
+	mockClient.errImagePull = err
+}
+
+func setUpSwarmService() *swarm.Service {
+	return &swarm.Service{
+		ID: "swarm-id",
+		Spec: swarm.ServiceSpec{
+			TaskTemplate: swarm.TaskSpec{
+				ContainerSpec: &swarm.ContainerSpec{
+					Image: "image-name",
+				},
+			},
+		},
+		Meta: swarm.Meta{
+			Version: swarm.Version{Index: 1},
+		},
+	}
 }

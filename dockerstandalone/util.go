@@ -1,11 +1,16 @@
 package dockerstandalone
 
 import (
+	"encoding/base64"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/registry"
+	"github.com/segmentio/encoding/json"
 )
 
 // UpdateScheduleIDLabel is the label used to store the update schedule ID
@@ -56,4 +61,36 @@ func IsAsyncAgent(container types.ContainerJSON) bool {
 	}
 
 	return false
+}
+
+func MakeImagePullOptions() (image.PullOptions, error) {
+	var imagePullOptions image.PullOptions
+	var err error
+	if os.Getenv("REGISTRY_USED") != "" {
+		imagePullOptions, err = CustomRegistryPullOptions()
+		if err != nil {
+			return image.PullOptions{}, fmt.Errorf("unable to make custom registry pull options: %w", err)
+		}
+	}
+
+	return imagePullOptions, nil
+}
+
+func CustomRegistryPullOptions() (image.PullOptions, error) {
+	var imagePullOptions image.PullOptions
+	// Authenticate to the private registry
+	// ref@https://docs.docker.com/engine/api/sdk/examples/#pull-an-image-with-authentication
+	authConfig := registry.AuthConfig{
+		Username: os.Getenv("REGISTRY_USERNAME"),
+		Password: os.Getenv("REGISTRY_PASSWORD"),
+	}
+
+	encodedJSON, err := json.Marshal(authConfig)
+	if err != nil {
+		return image.PullOptions{}, err
+	}
+
+	imagePullOptions.RegistryAuth = base64.URLEncoding.EncodeToString(encodedJSON)
+
+	return imagePullOptions, nil
 }

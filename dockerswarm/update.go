@@ -3,16 +3,17 @@ package dockerswarm
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/portainer/portainer-updater/dockerstandalone"
 	"github.com/portainer/portainer-updater/utils"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
@@ -158,7 +159,12 @@ func pullImage(ctx context.Context, dockerCli client.APIClient, imageName string
 		Str("image", imageName).
 		Msg("Pulling Docker image")
 
-	reader, err := dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
+	imagePullOptions, err := dockerstandalone.MakeImagePullOptions()
+	if err != nil {
+		return false, fmt.Errorf("unable to make image pull options: %w", err)
+	}
+
+	reader, err := dockerCli.ImagePull(ctx, imageName, imagePullOptions)
 	if err != nil {
 		log.Err(err).
 			Str("image", imageName).
