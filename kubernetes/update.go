@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/pkg/errors"
@@ -44,6 +45,11 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 	var patch []jsonPatch
 	if licenseKey != "" {
 		patch = append(patch, createEnvVarPatch(licenseKey, deployment.Spec.Template.Spec.Containers[0].Env))
+	}
+
+	if os.Getenv("REGISTRY_USED") != "" {
+		imagePullSecretPatch := createImagePullSecretPatch(os.Getenv("REGISTRY_PULL_SECRET_NAME"), deployment.Spec.Template.Spec.ImagePullSecrets)
+		patch = append(patch, imagePullSecretPatch)
 	}
 
 	defaultTimeout := int64((5 * time.Minute).Seconds()) // 5 minutes by default
@@ -150,6 +156,34 @@ func createEnvVarPatch(licenseKey string, envVars []coreV1.EnvVar) jsonPatch {
 		Op:    "add",
 		Path:  "/spec/template/spec/containers/0/env/-",
 		Value: licenseKeyEnvVar,
+	}
+}
+
+func createImagePullSecretPatch(secretName string, existing []coreV1.LocalObjectReference) jsonPatch {
+	if secretName == "" {
+		return jsonPatch{}
+	}
+
+	for _, ref := range existing {
+		if ref.Name == secretName {
+			return jsonPatch{}
+		}
+	}
+
+	if existing == nil {
+		return jsonPatch{
+			Op:   "add",
+			Path: "/spec/template/spec/imagePullSecrets",
+			Value: []coreV1.LocalObjectReference{
+				{Name: secretName},
+			},
+		}
+	}
+
+	return jsonPatch{
+		Op:    "add",
+		Path:  "/spec/template/spec/imagePullSecrets/-",
+		Value: coreV1.LocalObjectReference{Name: secretName},
 	}
 }
 
