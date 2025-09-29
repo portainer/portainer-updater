@@ -115,6 +115,10 @@ func isProcessFailedToStart(err error) bool {
 }
 
 func isUnknownFlagError(err error) bool {
+	if err == nil {
+		return false
+	}
+
 	msg := strings.ToLower(err.Error())
 
 	return strings.Contains(msg, "unknown long flag '--health-check'")

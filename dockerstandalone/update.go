@@ -3,6 +3,7 @@ package dockerstandalone
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,7 +14,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
 
@@ -77,7 +78,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		log.Err(err).
 			Msg("Unable to create container")
 
-		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, false)
 	}
 
 	log.Info().
@@ -89,7 +90,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		log.Err(err).
 			Msg("Unable to stop container")
 
-		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, false)
 	}
 
 	log.Info().
@@ -97,22 +98,26 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		Str("image", tempContainerName).
 		Msg("Starting new container")
 
+	// This flag indicates whether we should roll back database changes in case of failure
+	// It is there to ensure backwards compatibility with previous versions of Portainer
+	rollbackDB := options.ExtendedHealthCheck
+
 	if err := dockerCli.ContainerStart(ctx, newContainerID, container.StartOptions{}); err != nil {
 		log.Err(err).
 			Msg("Unable to start container")
 
-		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, rollbackDB)
 	}
 
 	healthy, err := monitorHealth(ctx, dockerCli, newContainerID)
 	if err != nil {
 		log.Err(err).
 			Msg("Unable to monitor container health")
-		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, rollbackDB)
 	}
 
 	if !healthy {
-		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, rollbackDB)
 	}
 
 	switch {
@@ -130,10 +135,10 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 			Bool("Agent", options.Agent).
 			Msg("Unable to monitor extended container health")
 
-		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, rollbackDB)
 	}
 	if !healthy {
-		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID)
+		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, rollbackDB)
 	}
 
 	log.Info().
@@ -158,16 +163,22 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 	return nil
 }
 
-func cleanupContainerAndError(ctx context.Context, dockerCli client.APIClient, oldContainerId, newContainerID string) error {
+func cleanupContainerAndError(ctx context.Context, dockerCli client.APIClient, oldContainerId, newContainerID string, rollbackDB bool) error {
 	log.Info().
 		Msg("An error occurred during the update process - removing newly created container")
 
-	if newContainerID != "" {
-		printLogsToStdout(ctx, dockerCli, newContainerID)
-		if err := dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true}); err != nil {
+	printLogsToStdout(ctx, dockerCli, newContainerID)
+
+	if rollbackDB {
+		if err := execRollbackDB(ctx, dockerCli, newContainerID, 5*time.Minute); err != nil {
 			log.Err(err).
-				Msg("Unable to remove temporary container, please remove it manually")
+				Msg("Unable to rollback database changes, the database might be inconsistent")
 		}
+	}
+
+	if err := dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true}); err != nil {
+		log.Err(err).
+			Msg("Unable to remove temporary container, please remove it manually")
 	}
 
 	// should restart old container
@@ -254,7 +265,7 @@ func copyContainerConfig(imageName string, config *container.Config, containerNe
 	}
 }
 
-func applyNetworks(ctx context.Context, dockerCli *client.Client, containerID string, networks []string) error {
+func applyNetworks(ctx context.Context, dockerCli client.APIClient, containerID string, networks []string) error {
 	// We have to join all the networks one by one after container creation
 	log.Debug().
 		Str("containerId", containerID).
@@ -335,10 +346,10 @@ func monitorExtendedHealth(ctx context.Context, dockerCli *client.Client, contai
 	log.Error().
 		Msgf("%s health check timed out. Exiting without updating the container", name)
 
-	return false, errors.Wrapf(err, "%s health check timed out", name)
+	return false, pkgerrors.Wrapf(err, "%s health check timed out", name)
 }
 
-func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId string) (bool, error) {
+func monitorHealth(ctx context.Context, dockerCli client.APIClient, containerId string) (bool, error) {
 	// We then wait for the new container to be ready and monitor its health
 	// This is done by inspecting the container healthcheck status
 	log.Info().
@@ -350,12 +361,12 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 
 	container, err := dockerCli.ContainerInspect(ctx, containerId)
 	if err != nil {
-		return false, errors.WithMessage(err, "Unable to inspect new container")
+		return false, pkgerrors.WithMessage(err, "Unable to inspect new container")
 	}
 
 	if container.State.Health == nil {
 		if container.State.Status == "exited" {
-			return false, errors.New("Container exited unexpectedly")
+			return false, pkgerrors.New("Container exited unexpectedly")
 		}
 
 		log.Info().
@@ -368,11 +379,11 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 
 	tries := 5
 	for range tries {
-		if container.State.Health.Status == "healthy" {
+		if container.State.Health.Status == types.Healthy {
 			return true, nil
 		}
 
-		if container.State.Health.Status == "unhealthy" {
+		if container.State.Health.Status == types.Unhealthy {
 			log.Error().
 				Str("Status", container.State.Health.Status).
 				Interface("Logs", container.State.Health.Log).
@@ -389,7 +400,7 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 		time.Sleep(5 * time.Second)
 		container, err = dockerCli.ContainerInspect(ctx, containerId)
 		if err != nil {
-			return false, errors.WithMessage(err, "Unable to inspect new container")
+			return false, pkgerrors.WithMessage(err, "Unable to inspect new container")
 		}
 	}
 
@@ -402,7 +413,7 @@ func monitorHealth(ctx context.Context, dockerCli *client.Client, containerId st
 
 }
 
-func createContainer(ctx context.Context, dockerCli *client.Client, imageName, tempContainerName string, oldContainer types.ContainerJSON, updateConfig func(*container.Config)) (string, error) {
+func createContainer(ctx context.Context, dockerCli client.APIClient, imageName, tempContainerName string, oldContainer types.ContainerJSON, updateConfig func(*container.Config)) (string, error) {
 	log.Debug().
 		Str("containerName", tempContainerName).
 		Str("image", imageName).
@@ -420,12 +431,12 @@ func createContainer(ctx context.Context, dockerCli *client.Client, imageName, t
 		tempContainerName,
 	)
 	if err != nil {
-		return "", errors.WithMessage(err, "Unable to create new container")
+		return "", pkgerrors.WithMessage(err, "Unable to create new container")
 	}
 
 	err = applyNetworks(ctx, dockerCli, newContainer.ID, networks)
 	if err != nil {
-		return newContainer.ID, errors.WithMessage(err, "Unable to join container to network")
+		return "", pkgerrors.WithMessage(err, "Unable to join container to network")
 	}
 
 	return newContainer.ID, nil
@@ -449,4 +460,62 @@ func printLogsToStdout(ctx context.Context, dockerCli client.APIClient, containe
 		log.Error().Err(err).Msg("Unable to print container logs")
 	}
 
+}
+
+func execRollbackDB(ctx context.Context, dockerCli client.APIClient, containerID string, timeout time.Duration) error {
+	log.Info().Msg("Executing database rollback")
+	containerJSON, err := dockerCli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("unable to inspect container %s: %w", containerID, err)
+	}
+
+	if err := dockerCli.ContainerStop(ctx, containerID, container.StopOptions{}); err != nil {
+		return fmt.Errorf("unable to stop container %s: %w", containerID, err)
+	}
+
+	rollbackContainerID, err := createContainer(ctx, dockerCli, containerJSON.Image, fmt.Sprintf("%s-rollback", containerID), containerJSON, func(config *container.Config) {
+		config.Cmd = []string{"/portainer", "--force-rollback"}
+		config.Entrypoint = []string{}
+	})
+	if err != nil {
+		return fmt.Errorf("unable to create rollback container: %w", err)
+	}
+	if err := dockerCli.ContainerStart(ctx, rollbackContainerID, container.StartOptions{}); err != nil {
+		return fmt.Errorf("unable to start new container: %w", err)
+	}
+
+	waitResponseCh, errCh := dockerCli.ContainerWait(ctx, rollbackContainerID, container.WaitConditionNotRunning)
+	var rollbackErr error
+	select {
+	case err = <-errCh:
+		if err != nil {
+			rollbackErr = fmt.Errorf("waiting for container failed: %w", err)
+		}
+	case waitResponse := <-waitResponseCh:
+		if waitResponse.StatusCode != 0 {
+			err := fmt.Errorf("exit code %d", waitResponse.StatusCode)
+			if waitResponse.Error != nil {
+				err = fmt.Errorf("%w: %s", err, waitResponse.Error.Message)
+			}
+
+			rollbackErr = err
+		}
+	case <-time.After(timeout):
+		rollbackErr = errors.New("timeout waiting for rollback container to finish")
+	}
+
+	// Clean up the rollback container even if the rollback itself failed
+	if err := dockerCli.ContainerRemove(ctx, rollbackContainerID, container.RemoveOptions{Force: true}); err != nil {
+		rollbackErr = errors.Join(rollbackErr, fmt.Errorf("unable to remove rollback container %s: %w", rollbackContainerID, err))
+	}
+
+	if rollbackErr != nil {
+		return rollbackErr
+	}
+
+	log.Info().
+		Str("containerId", rollbackContainerID).
+		Msg("Database rollback completed successfully")
+
+	return nil
 }

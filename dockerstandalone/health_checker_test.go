@@ -1,6 +1,7 @@
 package dockerstandalone
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/docker/docker/client"
@@ -29,4 +30,10 @@ func TestPortainerHealthChecker_healthyNoFlag(t *testing.T) {
 	response := setUpTestContainer(t, t.Context(), dockerCli)
 
 	assert.ErrorIs(t, portainerHealthy(t.Context(), dockerCli, response.ID), ErrFlagNotSupported, "should not contain a binary whose got a health check flag, thus should return ErrFlagNotSupported")
+}
+
+func TestIsUnknownFlagError(t *testing.T) {
+	assert.True(t, isUnknownFlagError(fmt.Errorf("unknown long flag '--health-check'")))
+	assert.False(t, isUnknownFlagError(fmt.Errorf("error")))
+	assert.False(t, isUnknownFlagError(nil))
 }
