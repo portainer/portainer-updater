@@ -61,37 +61,37 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 	}
 
 	err := updateDeployment(ctx, deployCli, deployment.Name, imageName, patch, &timeout)
-	if err != nil {
-		// Reset patch so that new patches can be applied cleanly
-		patch = []jsonPatch{}
-		log.Err(err).
-			Str("deploymentName", deployment.Name).
-			Msg("Unable to update deployment")
-
+	if err == nil {
 		log.Info().
 			Str("deploymentName", deployment.Name).
-			Msg("Rolling back deployment")
+			Str("image", imageName).
+			Msg("Update process completed")
 
-		if options.ExtendedHealthCheck {
-			patch = append(patch, removeHealthCheckPatch())
-		}
-
-		err := updateDeployment(ctx, deployCli, deployment.Name, originalImage, patch, &defaultTimeout)
-		if err != nil {
-			log.Err(err).
-				Str("deploymentName", deployment.Name).
-				Msg("Unable to rollback deployment")
-		}
-
-		return errUpdateFailure
+		return nil
 	}
+
+	log.Err(err).
+		Str("deploymentName", deployment.Name).
+		Msg("Unable to update deployment")
 
 	log.Info().
 		Str("deploymentName", deployment.Name).
-		Str("image", imageName).
-		Msg("Update process completed")
+		Msg("Rolling back deployment")
 
-	return nil
+	// Reset patch so that new patches can be applied cleanly
+	patch = []jsonPatch{}
+
+	if options.ExtendedHealthCheck {
+		patch = append(patch, removeHealthCheckPatch())
+	}
+
+	if err := updateDeployment(ctx, deployCli, deployment.Name, originalImage, patch, &defaultTimeout); err != nil {
+		log.Err(err).
+			Str("deploymentName", deployment.Name).
+			Msg("Unable to rollback deployment")
+	}
+
+	return errUpdateFailure
 }
 
 func createHealthCheckPatch() jsonPatch {
