@@ -251,7 +251,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 				"An error occurred during the update process - removing newly created container",
 				"Printing container logs to stdout",
 				"unable to remove rollback container",
-				"Unable to rollback database changes, the database might be inconsistent",
+				"Unable to rollback database changes. Manual rollback might be required",
 			)
 
 			rollbackDuration := 2 * time.Minute
@@ -289,7 +289,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 			assertLogs := withLogAssertions(t,
 				"An error occurred during the update process - removing newly created container",
 				"Printing container logs to stdout",
-				"Unable to rollback database changes, the database might be inconsistent",
+				"Unable to rollback database changes. Manual rollback might be required",
 				"Successfully restarted old container and cleaned up temporary container",
 			)
 
@@ -327,7 +327,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 			assertLogs := withLogAssertions(t,
 				"An error occurred during the update process - removing newly created container",
 				"Printing container logs to stdout",
-				"Unable to rollback database changes, the database might be inconsistent",
+				"Unable to rollback database changes. Manual rollback might be required",
 				"waiting for container failed",
 				"Successfully restarted old container and cleaned up temporary container",
 			)
@@ -366,7 +366,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 			assertLogs := withLogAssertions(t,
 				"An error occurred during the update process - removing newly created container",
 				"Printing container logs to stdout",
-				"Unable to rollback database changes, the database might be inconsistent",
+				"Unable to rollback database changes. Manual rollback might be required",
 				"Successfully restarted old container and cleaned up temporary container",
 				"timeout waiting for rollback container to finish",
 			)

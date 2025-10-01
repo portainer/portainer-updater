@@ -54,6 +54,7 @@ func Update(ctx context.Context, dockerCli client.APIClient, imageName string, s
 		return nil
 	}
 
+	originalImage := service.Spec.TaskTemplate.ContainerSpec.Image
 	service.Spec.TaskTemplate.ContainerSpec.Image = imageName
 
 	updateConfig(service.Spec.TaskTemplate.ContainerSpec)
@@ -111,7 +112,7 @@ func Update(ctx context.Context, dockerCli client.APIClient, imageName string, s
 			Str("serviceId", service.ID).
 			Msg("Waiting for service update to complete")
 
-		service, _, err := dockerCli.ServiceInspectWithRaw(ctx, service.ID, types.ServiceInspectOptions{})
+		inspectService, _, err := dockerCli.ServiceInspectWithRaw(ctx, service.ID, types.ServiceInspectOptions{})
 		if err != nil {
 			log.Err(err).
 				Str("serviceId", service.ID).
@@ -119,14 +120,22 @@ func Update(ctx context.Context, dockerCli client.APIClient, imageName string, s
 			return false, nil
 		}
 
-		if service.UpdateStatus == nil {
+		if inspectService.UpdateStatus == nil {
 			log.Warn().Msg("Service update status is empty")
 
 			return false, nil
 		}
 
-		switch service.UpdateStatus.State {
+		switch inspectService.UpdateStatus.State {
 		case swarm.UpdateStateRollbackCompleted:
+			if options.ExtendedHealthCheck {
+				if err := execRollbackDB(ctx, dockerCli, inspectService, originalImage, 5*time.Minute); err != nil {
+					log.Err(err).Msg("Database rollback failed after service rollback")
+
+					return true, errors.New("The update failed, the service was rolled back, but the database rollback failed. Manual rollback might be required")
+				}
+			}
+
 			return true, errors.New("The update failed and the service was rolled back")
 		case swarm.UpdateStateCompleted:
 			return true, nil
@@ -197,4 +206,50 @@ func isPortainerHealthCheck(healthConfig *container.HealthConfig) bool {
 		healthConfig.Test[0] == "CMD" &&
 		healthConfig.Test[1] == "/portainer" &&
 		healthConfig.Test[2] == "--health-check"
+}
+
+// execRollbackDB executes the database rollback in a separate container.
+// Since portainer-updater is running on the same node as the Portainer service, we can
+// create a sidecar container and mount the same volumes as the Portainer service.
+// This way, we can ensure that the database rollback is executed on the same data as the Portainer service.
+func execRollbackDB(ctx context.Context, dockerCli client.APIClient, service swarm.Service, sidecarImage string, timeout time.Duration) error {
+	log.Info().Msg("Executing database rollback")
+
+	originalReplicas := uint64(1)
+	if service.Spec.Mode.Replicated != nil && service.Spec.Mode.Replicated.Replicas != nil {
+		originalReplicas = *service.Spec.Mode.Replicated.Replicas
+	}
+	// This timeout is not accounted for in the overall update timeout.
+	scalingTimeout := 30 * time.Second
+
+	defer func() {
+		if scaleErr := Scale(ctx, dockerCli, service.ID, originalReplicas, scalingTimeout); scaleErr != nil {
+			log.Err(scaleErr).Msg("unable to reset service to original replica count after failed rollback")
+		}
+	}()
+
+	if err := Scale(ctx, dockerCli, service.ID, 0, scalingTimeout); err != nil {
+		return fmt.Errorf("unable to scale portainer to 0 replicas: %w", err)
+	}
+
+	containerConfig := &container.Config{
+		Image:      sidecarImage,
+		Cmd:        []string{"/portainer", "--force-rollback"},
+		Entrypoint: []string{},
+	}
+	hostConfig := &container.HostConfig{
+		Mounts: service.Spec.TaskTemplate.ContainerSpec.Mounts,
+	}
+	rollbackContainer, err := dockerCli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, "portainer-db-rollback")
+	if err != nil {
+		return fmt.Errorf("unable to create rollback container: %w", err)
+	}
+
+	if err := dockerstandalone.RollbackDB(ctx, dockerCli, rollbackContainer.ID, timeout); err != nil {
+		return fmt.Errorf("unable to rollback database container: %w", err)
+	}
+
+	log.Info().Msg("Database rollback completed successfully")
+
+	return nil
 }

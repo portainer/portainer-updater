@@ -12,9 +12,13 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,7 +66,6 @@ func TestUpdateVersionIncrement(t *testing.T) {
 func TestUpdateWithExtendedHealthCheck(t *testing.T) {
 	t.Setenv("SKIP_PULL", "true")
 
-	swarmService := setUpSwarmService()
 	imageName := "image-name"
 
 	defaultAssertServiceUpdate := func(t *testing.T, service swarm.ServiceSpec) {
@@ -72,9 +75,7 @@ func TestUpdateWithExtendedHealthCheck(t *testing.T) {
 	}
 
 	t.Run("successful update", func(t *testing.T) {
-		t.Cleanup(func() {
-			swarmService.Version.Index = 1
-		})
+		swarmService := setUpSwarmService()
 
 		dockerClient := &mockDockerClient{
 			t:                   t,
@@ -91,6 +92,8 @@ func TestUpdateWithExtendedHealthCheck(t *testing.T) {
 	})
 
 	t.Run("failed to update service because of timeout", func(t *testing.T) {
+		swarmService := setUpSwarmService()
+
 		dockerClient := &mockDockerClient{
 			t:                   t,
 			assertServiceUpdate: defaultAssertServiceUpdate,
@@ -115,6 +118,8 @@ func TestUpdateWithExtendedHealthCheck(t *testing.T) {
 	})
 
 	t.Run("failed to update because of rollback", func(t *testing.T) {
+		swarmService := setUpSwarmService()
+
 		var updateStatuses []swarm.UpdateState
 		for range 10 {
 			updateStatuses = append(updateStatuses, swarm.UpdateStateUpdating)
@@ -124,11 +129,30 @@ func TestUpdateWithExtendedHealthCheck(t *testing.T) {
 		}
 		updateStatuses = append(updateStatuses, swarm.UpdateStateRollbackCompleted)
 
+		waitRespCh := make(chan container.WaitResponse, 1)
+		waitRespCh <- container.WaitResponse{StatusCode: 0}
+		close(waitRespCh)
 		dockerClient := &mockDockerClient{
-			t:                   t,
-			assertServiceUpdate: defaultAssertServiceUpdate,
-			errServiceUpdate:    nil,
-			updateStates:        updateStatuses,
+			t:                        t,
+			assertServiceUpdate:      defaultAssertServiceUpdate,
+			errServiceUpdate:         nil,
+			updateStates:             updateStatuses,
+			expectedContainerID:      "container-id",
+			containerWaitRespChannel: waitRespCh,
+			taskListCalls: [][]swarm.Task{
+				{
+					{Status: swarm.TaskStatus{State: swarm.TaskStateRunning}},
+				},
+				{
+					{Status: swarm.TaskStatus{State: swarm.TaskStateShutdown}},
+				},
+				{
+					{Status: swarm.TaskStatus{State: swarm.TaskStateStarting}},
+				},
+				{
+					{Status: swarm.TaskStatus{State: swarm.TaskStateRunning}},
+				},
+			},
 		}
 
 		synctest.Test(t, func(t *testing.T) {
@@ -184,26 +208,53 @@ type mockDockerClient struct {
 
 	errServiceUpdate    error
 	assertServiceUpdate func(t *testing.T, service swarm.ServiceSpec)
+	serviceVersion      uint64
 
 	errServiceInspectWithRaw error
 	updateStates             []swarm.UpdateState
 
+	taskListCalls [][]swarm.Task
+
 	errImagePull        error
 	imagePullReadCloser io.ReadCloser
+
+	expectedContainerID string
+
+	containerWaitRespChannel <-chan container.WaitResponse
+	containerWaitErrChannel  <-chan error
 }
 
-func (m *mockDockerClient) ServiceUpdate(ctx context.Context, serviceID string, version swarm.Version, service swarm.ServiceSpec, options types.ServiceUpdateOptions) (swarm.ServiceUpdateResponse, error) {
-	if m.assertServiceUpdate != nil {
-		m.assertServiceUpdate(m.t, service)
+func (c *mockDockerClient) ServiceUpdate(ctx context.Context, serviceID string, version swarm.Version, service swarm.ServiceSpec, options types.ServiceUpdateOptions) (swarm.ServiceUpdateResponse, error) {
+	c.serviceVersion = version.Index + 1
+	// Only assert the service update if an assertion function is provided and the service version is less than 3
+	// If it's 3 or more, it means the service is going through a rollback, and the mock does not support that yet.
+	if c.assertServiceUpdate != nil && c.serviceVersion < 3 {
+		c.assertServiceUpdate(c.t, service)
 	}
 
-	return swarm.ServiceUpdateResponse{}, m.errServiceUpdate
+	return swarm.ServiceUpdateResponse{}, c.errServiceUpdate
 }
 
-func (m *mockDockerClient) ServiceInspectWithRaw(ctx context.Context, serviceID string, options types.ServiceInspectOptions) (swarm.Service, []byte, error) {
-	statusUpdate := m.updateStates[0]
-	if len(m.updateStates) > 1 {
-		m.updateStates = m.updateStates[1:]
+func (c *mockDockerClient) TaskList(ctx context.Context, options types.TaskListOptions) ([]swarm.Task, error) {
+	taskListCall := c.taskListCalls[0]
+	if len(c.taskListCalls) > 1 {
+		c.taskListCalls = c.taskListCalls[1:]
+	}
+
+	return taskListCall, nil
+}
+
+func (c *mockDockerClient) ServiceInspectWithRaw(ctx context.Context, serviceID string, options types.ServiceInspectOptions) (swarm.Service, []byte, error) {
+	statusUpdate := c.updateStates[0]
+	if len(c.updateStates) > 1 {
+		c.updateStates = c.updateStates[1:]
+	}
+	replicas := uint64(1)
+	// To simulate a rollback, we set the replicas to 0 when the service version is 3
+	// 3 means the service has been updated twice (initial version 1 + 2 updates)
+	// I admit this is a bit hacky, but it works for the purpose of the test
+	if c.serviceVersion == 3 {
+		replicas = 0
 	}
 
 	return swarm.Service{
@@ -211,11 +262,52 @@ func (m *mockDockerClient) ServiceInspectWithRaw(ctx context.Context, serviceID 
 		UpdateStatus: &swarm.UpdateStatus{
 			State: statusUpdate,
 		},
-	}, nil, m.errServiceInspectWithRaw
+		Meta: swarm.Meta{
+			Version: swarm.Version{Index: c.serviceVersion},
+		},
+		Spec: swarm.ServiceSpec{
+			TaskTemplate: swarm.TaskSpec{
+				ContainerSpec: &swarm.ContainerSpec{
+					Image: "image-name",
+				},
+			},
+			Mode: swarm.ServiceMode{
+				Replicated: &swarm.ReplicatedService{
+					Replicas: &replicas,
+				},
+			},
+		},
+	}, nil, c.errServiceInspectWithRaw
 }
 
-func (m *mockDockerClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
-	return m.imagePullReadCloser, m.errImagePull
+func (c *mockDockerClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
+	return c.imagePullReadCloser, c.errImagePull
+}
+
+func (c *mockDockerClient) ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error {
+	assert.Equal(c.t, c.expectedContainerID, containerID)
+
+	return nil
+}
+
+func (c *mockDockerClient) ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error {
+	assert.Equal(c.t, c.expectedContainerID, containerID)
+
+	return nil
+}
+func (c *mockDockerClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (container.CreateResponse, error) {
+	expectedCMD := []string{"/portainer", "--force-rollback"}
+	for i, cmd := range expectedCMD {
+		assert.Equal(c.t, cmd, config.Cmd[i])
+	}
+
+	return container.CreateResponse{
+		ID: c.expectedContainerID,
+	}, nil
+}
+
+func (c *mockDockerClient) ContainerWait(ctx context.Context, container string, condition container.WaitCondition) (<-chan container.WaitResponse, <-chan error) {
+	return c.containerWaitRespChannel, c.containerWaitErrChannel
 }
 
 func withPullImage(mockClient *mockDockerClient, err error, upToDate bool) {
@@ -229,12 +321,18 @@ func withPullImage(mockClient *mockDockerClient, err error, upToDate bool) {
 }
 
 func setUpSwarmService() *swarm.Service {
+	one := uint64(1)
 	return &swarm.Service{
 		ID: "swarm-id",
 		Spec: swarm.ServiceSpec{
 			TaskTemplate: swarm.TaskSpec{
 				ContainerSpec: &swarm.ContainerSpec{
 					Image: "image-name",
+				},
+			},
+			Mode: swarm.ServiceMode{
+				Replicated: &swarm.ReplicatedService{
+					Replicas: &one,
 				},
 			},
 		},

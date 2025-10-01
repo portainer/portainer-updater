@@ -172,7 +172,7 @@ func cleanupContainerAndError(ctx context.Context, dockerCli client.APIClient, o
 	if rollbackDB {
 		if err := execRollbackDB(ctx, dockerCli, oldContainerId, newContainerID, 5*time.Minute); err != nil {
 			log.Err(err).
-				Msg("Unable to rollback database changes, the database might be inconsistent")
+				Msg("Unable to rollback database changes. Manual rollback might be required")
 		}
 	}
 
@@ -480,42 +480,12 @@ func execRollbackDB(ctx context.Context, dockerCli client.APIClient, oldContaine
 	if err != nil {
 		return fmt.Errorf("unable to create rollback container: %w", err)
 	}
-	if err := dockerCli.ContainerStart(ctx, rollbackContainerID, container.StartOptions{}); err != nil {
-		return fmt.Errorf("unable to start new container: %w", err)
+
+	if err := RollbackDB(ctx, dockerCli, rollbackContainerID, timeout); err != nil {
+		return fmt.Errorf("unable to rollback database: %w", err)
 	}
 
-	waitResponseCh, errCh := dockerCli.ContainerWait(ctx, rollbackContainerID, container.WaitConditionNotRunning)
-	var rollbackErr error
-	select {
-	case err = <-errCh:
-		if err != nil {
-			rollbackErr = fmt.Errorf("waiting for container failed: %w", err)
-		}
-	case waitResponse := <-waitResponseCh:
-		if waitResponse.StatusCode != 0 {
-			err := fmt.Errorf("exit code %d", waitResponse.StatusCode)
-			if waitResponse.Error != nil {
-				err = fmt.Errorf("%w: %s", err, waitResponse.Error.Message)
-			}
-
-			rollbackErr = err
-		}
-	case <-time.After(timeout):
-		rollbackErr = errors.New("timeout waiting for rollback container to finish")
-	}
-
-	// Clean up the rollback container even if the rollback itself failed
-	if err := dockerCli.ContainerRemove(ctx, rollbackContainerID, container.RemoveOptions{Force: true}); err != nil {
-		rollbackErr = errors.Join(rollbackErr, fmt.Errorf("unable to remove rollback container %s: %w", rollbackContainerID, err))
-	}
-
-	if rollbackErr != nil {
-		return rollbackErr
-	}
-
-	log.Info().
-		Str("containerId", rollbackContainerID).
-		Msg("Database rollback completed successfully")
+	log.Info().Msg("Database rollback completed successfully")
 
 	return nil
 }
