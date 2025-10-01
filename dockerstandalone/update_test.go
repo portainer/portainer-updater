@@ -25,6 +25,7 @@ type mockDockerClient struct {
 	client.APIClient
 	t                            *testing.T
 	expectedOldContainerID       string
+	expectInspectOldContainerID  bool
 	expectedContainerID          string
 	expectedRollbackContainerID  string
 	expectedContainerRemoveErr   error
@@ -64,7 +65,11 @@ func (c mockDockerClient) ContainerLogs(ctx context.Context, containerID string,
 }
 
 func (c mockDockerClient) ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error) {
-	assert.Equal(c.t, c.expectedContainerID, containerID)
+	if c.expectInspectOldContainerID {
+		assert.Equal(c.t, c.expectedOldContainerID, containerID)
+	} else {
+		assert.Equal(c.t, c.expectedContainerID, containerID)
+	}
 
 	if c.expectedContainerInspectResp != nil {
 		return *c.expectedContainerInspectResp, c.expectedContainerInspectErr
@@ -224,6 +229,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 				expectedOldContainerID:      "mock-old-container-id",
 				expectedContainerID:         "mock-container-id",
 				expectedRollbackContainerID: "mock-rollback-container-id",
+				expectInspectOldContainerID: true,
 				containerWaitErrChannel:     make(chan error, 1),
 				containerWaitRespChannel:    containerWaitRespCh,
 			}
@@ -261,6 +267,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 				expectedOldContainerID:      "mock-old-container-id",
 				expectedContainerID:         "mock-container-id",
 				expectedRollbackContainerID: "mock-rollback-container-id",
+				expectInspectOldContainerID: true,
 				containerWaitErrChannel:     make(chan error, 1),
 				containerWaitRespChannel:    containerWaitRespCh,
 				expectedContainerRemoveErr:  errors.New("test error"),
@@ -299,6 +306,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 				expectedOldContainerID:      "mock-old-container-id",
 				expectedContainerID:         "mock-container-id",
 				expectedRollbackContainerID: "mock-rollback-container-id",
+				expectInspectOldContainerID: true,
 				containerWaitErrChannel:     make(chan error, 1),
 				containerWaitRespChannel:    containerWaitRespCh,
 			}
@@ -337,6 +345,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 				expectedOldContainerID:      "mock-old-container-id",
 				expectedContainerID:         "mock-container-id",
 				expectedRollbackContainerID: "mock-rollback-container-id",
+				expectInspectOldContainerID: true,
 				containerWaitErrChannel:     containerWaitErr,
 				containerWaitRespChannel:    make(chan container.WaitResponse),
 			}
@@ -367,6 +376,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 				expectedOldContainerID:      "mock-old-container-id",
 				expectedContainerID:         "mock-container-id",
 				expectedRollbackContainerID: "mock-rollback-container-id",
+				expectInspectOldContainerID: true,
 				containerWaitErrChannel:     make(chan error, 1),               // never sending anything to simulate timeout
 				containerWaitRespChannel:    make(chan container.WaitResponse), // never sending anything to simulate timeout
 			}

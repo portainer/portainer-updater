@@ -170,7 +170,7 @@ func cleanupContainerAndError(ctx context.Context, dockerCli client.APIClient, o
 	printLogsToStdout(ctx, dockerCli, newContainerID)
 
 	if rollbackDB {
-		if err := execRollbackDB(ctx, dockerCli, newContainerID, 5*time.Minute); err != nil {
+		if err := execRollbackDB(ctx, dockerCli, oldContainerId, newContainerID, 5*time.Minute); err != nil {
 			log.Err(err).
 				Msg("Unable to rollback database changes, the database might be inconsistent")
 		}
@@ -462,18 +462,18 @@ func printLogsToStdout(ctx context.Context, dockerCli client.APIClient, containe
 
 }
 
-func execRollbackDB(ctx context.Context, dockerCli client.APIClient, containerID string, timeout time.Duration) error {
+func execRollbackDB(ctx context.Context, dockerCli client.APIClient, oldContainerID, newContainerID string, timeout time.Duration) error {
 	log.Info().Msg("Executing database rollback")
-	containerJSON, err := dockerCli.ContainerInspect(ctx, containerID)
+	if err := dockerCli.ContainerStop(ctx, newContainerID, container.StopOptions{}); err != nil {
+		return fmt.Errorf("unable to stop container %s: %w", newContainerID, err)
+	}
+
+	containerJSON, err := dockerCli.ContainerInspect(ctx, oldContainerID)
 	if err != nil {
-		return fmt.Errorf("unable to inspect container %s: %w", containerID, err)
+		return fmt.Errorf("unable to inspect container %s: %w", oldContainerID, err)
 	}
 
-	if err := dockerCli.ContainerStop(ctx, containerID, container.StopOptions{}); err != nil {
-		return fmt.Errorf("unable to stop container %s: %w", containerID, err)
-	}
-
-	rollbackContainerID, err := createContainer(ctx, dockerCli, containerJSON.Image, fmt.Sprintf("%s-rollback", containerID), containerJSON, func(config *container.Config) {
+	rollbackContainerID, err := createContainer(ctx, dockerCli, containerJSON.Image, fmt.Sprintf("%s-rollback", oldContainerID), containerJSON, func(config *container.Config) {
 		config.Cmd = []string{"/portainer", "--force-rollback"}
 		config.Entrypoint = []string{}
 	})
