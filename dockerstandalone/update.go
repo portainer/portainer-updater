@@ -302,22 +302,27 @@ func monitorAgentHealth(ctx context.Context, dockerCli *client.Client, container
 	if asyncMode {
 		backoffBase = 60
 	}
+	retries := 10
 
-	return monitorExtendedHealth(ctx, dockerCli, containerID, agentHealthy, backoffBase, "Agent")
+	return monitorExtendedHealth(ctx, dockerCli, containerID, agentHealthy, backoffBase, "Agent", retries)
 }
 
 func monitorPortainerHealth(ctx context.Context, dockerCli *client.Client, containerID string) (bool, error) {
 	log.Info().
 		Str("containerId", containerID).
 		Msg("Monitoring new portainer container health by using its health check flag")
-	backoffBase := 5
-
-	return monitorExtendedHealth(ctx, dockerCli, containerID, portainerHealthy, backoffBase, "Portainer")
+	backoffBase := 10
+	retries := 44
+	// Each iteration takes approximately 10 seconds.
+	// With backoffBase 10s and the sleep time is backoffBase*i, the total time is:
+	// Total wait time = Σ(backoffBase*i) for i = 1..44 = 9900 seconds ≈ 2.75 hours
+	// Covers long startup tasks like DB migrations.
+	return monitorExtendedHealth(ctx, dockerCli, containerID, portainerHealthy, backoffBase, "Portainer", retries)
 }
 
-func monitorExtendedHealth(ctx context.Context, dockerCli *client.Client, containerID string, healthCheck healthCheck, backoffBase int, name string) (bool, error) {
+func monitorExtendedHealth(ctx context.Context, dockerCli *client.Client, containerID string, healthCheck healthCheck, backoffBase int, name string, retries int) (bool, error) {
 	var err error
-	for i := range 10 {
+	for i := range retries {
 		err = healthCheck(ctx, dockerCli, containerID)
 		if err == nil {
 			log.Info().

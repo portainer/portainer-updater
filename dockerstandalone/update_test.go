@@ -460,7 +460,7 @@ func TestMonitorExtendedHealth(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			now := time.Now()
 
-			healthy, err := monitorExtendedHealth(t.Context(), nil, "id", testHealthCheck, backoffBase, "test")
+			healthy, err := monitorExtendedHealth(t.Context(), nil, "id", testHealthCheck, backoffBase, "test", 10)
 
 			require.False(t, healthy)
 			require.ErrorContains(t, err, "test health check timed out")
@@ -480,7 +480,7 @@ func TestMonitorExtendedHealth(t *testing.T) {
 		}
 		backOffBase := 5
 		synctest.Test(t, func(t *testing.T) {
-			healthy, err := monitorExtendedHealth(t.Context(), nil, "id", testHealthCheck, backOffBase, "test")
+			healthy, err := monitorExtendedHealth(t.Context(), nil, "id", testHealthCheck, backOffBase, "test", 10)
 
 			require.NoError(t, err, "should not return error when health check eventually succeeds")
 			require.True(t, healthy, "should be healthy when health check eventually succeeds")
