@@ -10,11 +10,13 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/segmentio/encoding/json"
 	appV1 "k8s.io/api/apps/v1"
+	batchV1 "k8s.io/api/batch/v1"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-	v1 "k8s.io/client-go/kubernetes/typed/apps/v1"
+	appsV1Client "k8s.io/client-go/kubernetes/typed/apps/v1"
+	batchV1Client "k8s.io/client-go/kubernetes/typed/batch/v1"
 )
 
 type (
@@ -39,8 +41,8 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 
 	originalImage := deployment.Spec.Template.Spec.Containers[0].Image
 
-	deployCli := cli.AppsV1().
-		Deployments(deployment.Namespace)
+	deployCli := cli.AppsV1().Deployments(deployment.Namespace)
+	jobCli := cli.BatchV1().Jobs(deployment.Namespace)
 
 	var patch []jsonPatch
 	if licenseKey != "" {
@@ -83,6 +85,11 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 
 	if options.ExtendedHealthCheck {
 		patch = append(patch, removeHealthCheckPatch())
+		if err := rollbackDB(ctx, deployCli, jobCli, deployment, 5*time.Minute); err != nil {
+			log.Err(err).
+				Str("deploymentName", deployment.Name).
+				Msg("Database rollback failed. Manual rollback might be required")
+		}
 	}
 
 	if err := updateDeployment(ctx, deployCli, deployment.Name, originalImage, patch, &defaultTimeout); err != nil {
@@ -197,7 +204,7 @@ func Index[E any](slice []E, predicate func(E) bool) (int, bool) {
 	return -1, false
 }
 
-func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName, imageName string, morePatch []jsonPatch, timeoutSeconds *int64) error {
+func updateDeployment(ctx context.Context, deployCli appsV1Client.DeploymentInterface, deploymentName, imageName string, morePatch []jsonPatch, timeoutSeconds *int64) error {
 	patch := append([]jsonPatch{
 		{
 			Op:    "replace",
@@ -224,7 +231,7 @@ func updateDeployment(ctx context.Context, deployCli v1.DeploymentInterface, dep
 	return waitForDeployment(ctx, deployCli, newDeployment.Name, newDeployment.UID, timeoutSeconds)
 }
 
-func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, deploymentName string, uid types.UID, timeoutSeconds *int64) error {
+func waitForDeployment(ctx context.Context, deployCli appsV1Client.DeploymentInterface, deploymentName string, uid types.UID, timeoutSeconds *int64) error {
 	watcher, err := deployCli.Watch(ctx, metaV1.ListOptions{
 		FieldSelector:  fmt.Sprintf("metadata.name=%s", deploymentName),
 		TimeoutSeconds: timeoutSeconds,
@@ -278,4 +285,181 @@ func waitForDeployment(ctx context.Context, deployCli v1.DeploymentInterface, de
 	}
 
 	return errors.New("timeout")
+}
+
+func rollbackDB(ctx context.Context, deployCli appsV1Client.DeploymentInterface, jobCli batchV1Client.JobInterface, deployment *appV1.Deployment, timeout time.Duration) error {
+	log.Info().Msg("Rolling back DB")
+	var originalReplicas int32 = 1
+	if deployment.Spec.Replicas != nil {
+		originalReplicas = *deployment.Spec.Replicas
+	}
+
+	scalingTimeout := 30 * time.Second
+
+	// Defer a reset of the deployment replicas to original value
+	defer func() {
+		if scaleErr := scaleDeployment(ctx, deployCli, deployment.Name, originalReplicas, scalingTimeout); scaleErr != nil {
+			log.Err(scaleErr).
+				Str("deploymentName", deployment.Name).
+				Msg("failed to scale deployment back to original replicas after rollback job")
+		}
+	}()
+
+	// Scale deployment to 0
+	zero := int32(0)
+	if err := scaleDeployment(ctx, deployCli, deployment.Name, zero, scalingTimeout); err != nil {
+		return fmt.Errorf("failed to scale deployment back to zero for the rollback job: %w", err)
+	}
+
+	// Create and run the rollback job
+	rollbackJobSpec := createRollbackJobSpec(fmt.Sprintf("%s-db-rollback-job-%d", deployment.Name, time.Now().Unix()), deployment, timeout)
+	rollbackJob, err := jobCli.Create(ctx, rollbackJobSpec, metaV1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("creating rollback job: %w", err)
+	}
+
+	defer func() {
+		// Delete the job to free resources, but don't block on it.
+		// If it fails, it will be cleaned up automatically after TTLSecondsAfterFinished.
+		if deleteJobErr := deleteJob(ctx, jobCli, rollbackJob.Name); deleteJobErr != nil {
+			log.Err(deleteJobErr).Msg("failed to delete rollback job. It will be cleaned up automatically after TTLSecondsAfterFinished")
+		}
+	}()
+
+	if err := awaitRollbackJob(ctx, jobCli, rollbackJob, timeout); err != nil {
+		return fmt.Errorf("failed to run rollback job: %w", err)
+	}
+
+	return nil
+}
+
+func scaleDeployment(ctx context.Context, deployCli appsV1Client.DeploymentInterface, deploymentName string, replicas int32, timeout time.Duration) error {
+	deployment, err := deployCli.Get(ctx, deploymentName, metaV1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get deployment: %w", err)
+	}
+
+	if deployment.Spec.Replicas != nil && *deployment.Spec.Replicas == replicas {
+		return nil
+	}
+
+	patch := []jsonPatch{
+		{
+			Op:    "replace",
+			Path:  "/spec/replicas",
+			Value: replicas,
+		},
+	}
+
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("failed to marshal scale-to-zero patch: %w", err)
+	}
+
+	patchedDeployment, err := deployCli.Patch(
+		ctx,
+		deploymentName,
+		types.JSONPatchType,
+		patchBytes,
+		metaV1.PatchOptions{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to patch deployment: %w", err)
+	}
+
+	timeoutSeconds := int64(timeout.Seconds())
+
+	if err := waitForDeployment(ctx, deployCli, deploymentName, patchedDeployment.UID, &timeoutSeconds); err != nil {
+		return fmt.Errorf("failed to wait for deployment to scale: %w", err)
+	}
+
+	return nil
+}
+
+func deleteJob(ctx context.Context, jobCli batchV1Client.JobInterface, jobName string) error {
+	// PropagationPolicy to background to not block on deleting pods; best-effort
+	deletePolicy := metaV1.DeletePropagationBackground
+
+	err := jobCli.Delete(ctx, jobName, metaV1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete job: %w", err)
+	}
+
+	return nil
+}
+
+func createRollbackJobSpec(name string, deployment *appV1.Deployment, timeout time.Duration) *batchV1.Job {
+	portainerContainer := deployment.Spec.Template.Spec.Containers[0]
+	// It's unlikely that a rollback will fail, but to account for flakes we allow 3 retries.
+	// Furthermore, force-rollback will replace the existing DB with the last backup, and since the backup
+	// is not changed between retries, retrying is safe.
+	backoffLimit := int32(3)
+
+	// In the unlikely event that the clean-up fails, we don't want jobs to pile up.
+	// The job should be short-lived anyway.
+	// We set it to 5 minutes, which should be more than enough time for the job to complete and be inspected if needed.
+	ttlSecondsAfterFinished := int32(300)
+
+	jobTimeout := int64(timeout.Seconds())
+
+	return &batchV1.Job{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      name,
+			Namespace: deployment.Namespace,
+		},
+		Spec: batchV1.JobSpec{
+			BackoffLimit:            &backoffLimit,
+			TTLSecondsAfterFinished: &ttlSecondsAfterFinished,
+			Template: coreV1.PodTemplateSpec{
+				Spec: coreV1.PodSpec{
+					RestartPolicy:         coreV1.RestartPolicyOnFailure,
+					Volumes:               deployment.Spec.Template.Spec.Volumes,
+					ActiveDeadlineSeconds: &jobTimeout,
+					ServiceAccountName:    "portainer-sa-clusteradmin",
+					Containers: []coreV1.Container{
+						{
+							Name:         "portainer-db-rollback",
+							Image:        portainerContainer.Image,
+							Command:      []string{"/portainer", "--force-rollback"}, // Takes precedence over ENTRYPOINT
+							VolumeMounts: portainerContainer.VolumeMounts,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func awaitRollbackJob(ctx context.Context, jobCli batchV1Client.JobInterface, job *batchV1.Job, timeout time.Duration) error {
+	timeoutSeconds := int64(timeout.Seconds())
+
+	watcher, err := jobCli.Watch(ctx, metaV1.ListOptions{
+		FieldSelector:  fmt.Sprintf("metadata.name=%s", job.Name),
+		TimeoutSeconds: &timeoutSeconds,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create job watcher: %w", err)
+	}
+	defer watcher.Stop()
+
+	for event := range watcher.ResultChan() {
+		eventJob, ok := event.Object.(*batchV1.Job)
+		if !ok {
+			continue // ignore other objects
+		}
+
+		for _, condition := range eventJob.Status.Conditions {
+			if condition.Type == batchV1.JobComplete && condition.Status == coreV1.ConditionTrue {
+				return nil
+			}
+
+			if condition.Type == batchV1.JobFailed && condition.Status == coreV1.ConditionTrue {
+				return fmt.Errorf("job %s failed: %s", job.Name, condition.Message)
+			}
+		}
+	}
+
+	return errors.New("job timed out")
 }
