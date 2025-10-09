@@ -12,8 +12,8 @@ import (
 )
 
 func findService(ctx context.Context, container *types.Container, dockerCli *client.Client) (*swarm.Service, error) {
-	serviceName := container.Labels["com.docker.swarm.service.name"]
-	if serviceName == "" {
+	serviceID := container.Labels["com.docker.swarm.service.id"]
+	if serviceID == "" {
 		log.Debug().
 			Str("container", container.ID).
 			Interface("labels", container.Labels).
@@ -23,7 +23,7 @@ func findService(ctx context.Context, container *types.Container, dockerCli *cli
 	}
 
 	serviceFilters := filters.NewArgs()
-	serviceFilters.Add("name", serviceName)
+	serviceFilters.Add("id", serviceID)
 	services, err := dockerCli.ServiceList(ctx, types.ServiceListOptions{
 		Filters: serviceFilters,
 	})
