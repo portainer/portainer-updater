@@ -51,14 +51,16 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 
 	if os.Getenv("REGISTRY_USED") != "" {
 		imagePullSecretPatch := createImagePullSecretPatch(os.Getenv("REGISTRY_PULL_SECRET_NAME"), deployment.Spec.Template.Spec.ImagePullSecrets)
-		patch = append(patch, imagePullSecretPatch)
+		if imagePullSecretPatch != nil {
+			patch = append(patch, *imagePullSecretPatch)
+		}
 	}
 
 	defaultTimeout := int64((5 * time.Minute).Seconds()) // 5 minutes by default
 	timeout := defaultTimeout
 
 	if options.ExtendedHealthCheck {
-		patch = append(patch, createHealthCheckPatch())
+		patch = append(patch, createHealthCheckPatch(deployment))
 		timeout = int64((3 * time.Hour).Seconds()) // 3 hours if Portainer Auto Update is enabled, to allow for long migrations
 	}
 
@@ -101,26 +103,33 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 	return errUpdateFailure
 }
 
-func createHealthCheckPatch() jsonPatch {
-	return jsonPatch{
-		Op:   "add",
-		Path: "/spec/template/spec/containers/0/readinessProbe",
-		Value: map[string]interface{}{
-			"exec": map[string]interface{}{
-				"command": []string{"/portainer", "--health-check"},
-			},
-			"initialDelaySeconds": 5,
-			"periodSeconds":       5,
-			"timeoutSeconds":      5,
-			// A finite number of retries is supported.
-			// Each retry takes in the best case a few milliseconds and worst case 5 seconds, and is run every 5 seconds.
-			// Because migrations can take a long time, we want to allow it to run for 2 hours.
-			// So 2 hours / 5 seconds = 1440 retries, for the quickest possible retry.
-			// And 2 hours / 10 seconds = 720 retries, for the slowest possible retry.
-			// It's unlikely that the healthcheck will take the full 5 seconds every time, so 1000 retries should be sufficient.
-			// Thus, the maximum time the health check can take is 1000 * 10 seconds = 10000 seconds = ~2.78 hours.
-			"failureThreshold": 1000,
+func createHealthCheckPatch(deployment *appV1.Deployment) jsonPatch {
+	probe := map[string]interface{}{
+		"exec": map[string]interface{}{
+			"command": []string{"/portainer", "--health-check"},
 		},
+		"initialDelaySeconds": 5,
+		"periodSeconds":       5,
+		"timeoutSeconds":      5,
+		// A finite number of retries is supported.
+		// Each retry takes in the best case a few milliseconds and worst case 5 seconds, and is run every 5 seconds.
+		// Because migrations can take a long time, we want to allow it to run for 2 hours.
+		// So 2 hours / 5 seconds = 1440 retries, for the quickest possible retry.
+		// And 2 hours / 10 seconds = 720 retries, for the slowest possible retry.
+		// It's unlikely that the healthcheck will take the full 5 seconds every time, so 1000 retries should be sufficient.
+		// Thus, the maximum time the health check can take is 1000 * 10 seconds = 10000 seconds = ~2.78 hours.
+		"failureThreshold": 1000,
+	}
+
+	op := "add"
+	if len(deployment.Spec.Template.Spec.Containers) > 0 && deployment.Spec.Template.Spec.Containers[0].ReadinessProbe != nil {
+		op = "replace"
+	}
+
+	return jsonPatch{
+		Op:    op,
+		Path:  "/spec/template/spec/containers/0/readinessProbe",
+		Value: probe,
 	}
 }
 
@@ -166,19 +175,19 @@ func createEnvVarPatch(licenseKey string, envVars []coreV1.EnvVar) jsonPatch {
 	}
 }
 
-func createImagePullSecretPatch(secretName string, existing []coreV1.LocalObjectReference) jsonPatch {
+func createImagePullSecretPatch(secretName string, existing []coreV1.LocalObjectReference) *jsonPatch {
 	if secretName == "" {
-		return jsonPatch{}
+		return nil
 	}
 
 	for _, ref := range existing {
 		if ref.Name == secretName {
-			return jsonPatch{}
+			return nil
 		}
 	}
 
 	if existing == nil {
-		return jsonPatch{
+		return &jsonPatch{
 			Op:   "add",
 			Path: "/spec/template/spec/imagePullSecrets",
 			Value: []coreV1.LocalObjectReference{
@@ -187,7 +196,7 @@ func createImagePullSecretPatch(secretName string, existing []coreV1.LocalObject
 		}
 	}
 
-	return jsonPatch{
+	return &jsonPatch{
 		Op:    "add",
 		Path:  "/spec/template/spec/imagePullSecrets/-",
 		Value: coreV1.LocalObjectReference{Name: secretName},
