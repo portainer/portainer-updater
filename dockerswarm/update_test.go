@@ -206,6 +206,9 @@ type mockDockerClient struct {
 	client.APIClient
 	t *testing.T
 
+	serviceList    []swarm.Service
+	errServiceList error
+
 	errServiceUpdate    error
 	assertServiceUpdate func(t *testing.T, service swarm.ServiceSpec)
 	serviceVersion      uint64

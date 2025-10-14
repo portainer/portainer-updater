@@ -2,6 +2,7 @@ package portainer
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/portainer/portainer-updater/dockerstandalone"
 	"github.com/portainer/portainer-updater/dockerswarm"
@@ -107,7 +108,7 @@ func (r *Command) runSwarm(ctx context.Context, healthcheck bool) error {
 
 	service, err := dockerswarm.FindPortainerService(ctx, dockerCli)
 	if err != nil {
-		return errors.WithMessage(err, "failed finding container id")
+		return fmt.Errorf("failed finding portainer service: %w", err)
 	}
 
 	return dockerswarm.Update(ctx, dockerCli, r.Image, service, func(config *swarm.ContainerSpec) {
