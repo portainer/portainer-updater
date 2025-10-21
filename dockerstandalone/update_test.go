@@ -12,7 +12,6 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -507,51 +506,6 @@ func TestUpdate_monitorAgentHealthMissingBinary(t *testing.T) {
 	require.NoError(t, err, "should not return error when the healthy binary is missing")
 	assert.True(t, ok, "should be true because the healthy binary is missing and the agent health is thereby assumed to be ok")
 	assertLogs()
-}
-
-// setUpTestContainer creates a test container.
-// Note, the container is removed in the test cleanup.
-func setUpTestContainer(t *testing.T, ctx context.Context, dockerCli *client.Client) container.CreateResponse {
-	imgRd, err := dockerCli.ImagePull(ctx, "busybox:latest", image.PullOptions{})
-	require.NoError(t, err)
-
-	_, err = io.Copy(io.Discard, imgRd)
-	require.NoError(t, err)
-	require.NoError(t, imgRd.Close())
-
-	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
-		Image:      "busybox:latest",
-		Cmd:        []string{"tail", "-f", "/dev/null"},
-		StopSignal: "SIGKILL",
-	}, nil, nil, nil, t.Name())
-	require.NoError(t, err, "error when creating container")
-
-	t.Cleanup(func() {
-		timeout := 5
-		// These operations are sensitive to context cancellation, so we use context.WithoutCancel.
-		_ = dockerCli.ContainerStop(context.WithoutCancel(ctx), resp.ID, container.StopOptions{Timeout: &timeout})
-		_ = dockerCli.ContainerRemove(context.WithoutCancel(ctx), resp.ID, container.RemoveOptions{Force: true})
-	})
-
-	// Start container
-	err = dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{})
-	require.NoError(t, err, "error when starting container")
-
-	// Inspect container to verify env vars
-	inspect, err := dockerCli.ContainerInspect(ctx, resp.ID)
-	require.NoError(t, err, "error when inspecting container")
-
-	for range 10 {
-		if inspect.State.Running {
-			break
-		}
-
-		time.Sleep(300 * time.Millisecond)
-	}
-
-	require.True(t, inspect.State.Running)
-
-	return resp
 }
 
 func TestBuildContainerName(t *testing.T) {
