@@ -39,6 +39,7 @@ clean:
 	rm -rf $(dist)/*
 
 lint:
+	go mod tidy
 	golangci-lint run --timeout=10m -c .golangci.yaml
 
 test:
