@@ -44,16 +44,14 @@ func UpdateLabels(labels map[string]string, scheduleId string) map[string]string
 }
 
 func IsAsyncAgent(container types.ContainerJSON) bool {
-	for _, arg := range container.Args {
-		if arg == "--async-mode" {
-			return true
-		}
+	if slices.Contains(container.Args, "--async-mode") {
+		return true
 	}
 
 	const edgeAsyncEnv = "EDGE_ASYNC="
 	for _, env := range container.Config.Env {
-		if strings.HasPrefix(env, edgeAsyncEnv) {
-			value := strings.TrimPrefix(env, edgeAsyncEnv)
+		if after, ok := strings.CutPrefix(env, edgeAsyncEnv); ok {
+			value := after
 			if value == "true" || value == "1" {
 				return true
 			}

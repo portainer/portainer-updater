@@ -196,8 +196,8 @@ func cleanupContainerAndError(ctx context.Context, dockerCli client.APIClient, o
 }
 
 func buildContainerName(containerName string) string {
-	if strings.HasSuffix(containerName, "-update") {
-		return strings.TrimSuffix(containerName, "-update")
+	if before, ok := strings.CutSuffix(containerName, "-update"); ok {
+		return before
 	}
 
 	return fmt.Sprintf("%s-update", containerName)

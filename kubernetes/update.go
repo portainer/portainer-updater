@@ -21,9 +21,9 @@ import (
 
 type (
 	jsonPatch struct {
-		Op    string      `json:"op"`
-		Path  string      `json:"path"`
-		Value interface{} `json:"value"`
+		Op    string `json:"op"`
+		Path  string `json:"path"`
+		Value any    `json:"value"`
 	}
 )
 
@@ -104,8 +104,8 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 }
 
 func createHealthCheckPatch(deployment *appV1.Deployment) jsonPatch {
-	probe := map[string]interface{}{
-		"exec": map[string]interface{}{
+	probe := map[string]any{
+		"exec": map[string]any{
 			"command": []string{"/portainer", "--health-check"},
 		},
 		"initialDelaySeconds": 5,
