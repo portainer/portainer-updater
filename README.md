@@ -36,3 +36,7 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock portainer/portainer
 Use `PORTAINER_UPDATER_DEBUG=1` for improved development experience.
 It will enable:
 - Updating Portainer deployment in Kubernetes without needing to depend on the updater being executed inside a cluster. See [kubernetes.GetClient()](./kubernetes/client.go) for more info. 
+
+## Security
+
+For information about reporting security vulnerabilities, please see our [Security Policy](SECURITY.md).
