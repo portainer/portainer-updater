@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/portainer/portainer-updater/logs"
+
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
@@ -32,9 +34,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		Msg("Starting update process")
 
 	// We look for the existing container to copy its configuration
-	log.Debug().
-		Str("containerId", oldContainerId).
-		Msg("Looking for container")
+	log.Debug().Str("containerId", oldContainerId).Msg("Looking for container")
 
 	oldContainer, err := dockerCli.ContainerInspect(ctx, oldContainerId)
 	if err != nil {
@@ -53,8 +53,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 
 	imageUpToDate, err := pullImage(ctx, dockerCli, imageName)
 	if err != nil {
-		log.Err(err).
-			Msg("Unable to pull image")
+		log.Err(err).Msg("Unable to pull image")
 
 		return errUpdateFailure
 	}
@@ -75,8 +74,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 
 	newContainerID, err := createContainer(ctx, dockerCli, imageName, tempContainerName, oldContainer, updateConfig)
 	if err != nil {
-		log.Err(err).
-			Msg("Unable to create container")
+		log.Err(err).Msg("Unable to create container")
 
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, false)
 	}
@@ -87,8 +85,7 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		Msg("Stopping old container")
 
 	if err := dockerCli.ContainerStop(ctx, oldContainer.ID, container.StopOptions{}); err != nil {
-		log.Err(err).
-			Msg("Unable to stop container")
+		log.Err(err).Msg("Unable to stop container")
 
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, false)
 	}
@@ -103,16 +100,14 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 	rollbackDB := options.ExtendedHealthCheck
 
 	if err := dockerCli.ContainerStart(ctx, newContainerID, container.StartOptions{}); err != nil {
-		log.Err(err).
-			Msg("Unable to start container")
+		log.Err(err).Msg("Unable to start container")
 
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, rollbackDB)
 	}
 
 	healthy, err := monitorHealth(ctx, dockerCli, newContainerID)
 	if err != nil {
-		log.Err(err).
-			Msg("Unable to monitor container health")
+		log.Err(err).Msg("Unable to monitor container health")
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, rollbackDB)
 	}
 
@@ -141,16 +136,14 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 		return cleanupContainerAndError(ctx, dockerCli, oldContainerId, newContainerID, rollbackDB)
 	}
 
-	log.Info().
-		Msg("New container is healthy. The old  will be removed.")
+	log.Info().Msg("New container is healthy. The old  will be removed.")
 
 	tryRemoveOldContainer(ctx, dockerCli, oldContainer.ID)
 
 	// rename new container to old container name
-	err = dockerCli.ContainerRename(ctx, newContainerID, oldContainerName)
-	if err != nil {
-		log.Err(err).
-			Msg("Unable to rename container")
+	if err := dockerCli.ContainerRename(ctx, newContainerID, oldContainerName); err != nil {
+		log.Err(err).Msg("Unable to rename container")
+
 		return nil
 	}
 
@@ -164,33 +157,28 @@ func Update(ctx context.Context, dockerCli *client.Client, oldContainerId string
 }
 
 func cleanupContainerAndError(ctx context.Context, dockerCli client.APIClient, oldContainerId, newContainerID string, rollbackDB bool) error {
-	log.Info().
-		Msg("An error occurred during the update process - removing newly created container")
+	log.Info().Msg("An error occurred during the update process - removing newly created container")
 
 	printLogsToStdout(ctx, dockerCli, newContainerID)
 
 	if rollbackDB {
 		if err := execRollbackDB(ctx, dockerCli, oldContainerId, newContainerID, 5*time.Minute); err != nil {
-			log.Err(err).
-				Msg("Unable to rollback database changes. Manual rollback might be required")
+			log.Err(err).Msg("Unable to rollback database changes. Manual rollback might be required")
 		}
 	}
 
 	if err := dockerCli.ContainerRemove(ctx, newContainerID, container.RemoveOptions{Force: true}); err != nil {
-		log.Err(err).
-			Msg("Unable to remove temporary container, please remove it manually")
+		log.Err(err).Msg("Unable to remove temporary container, please remove it manually")
 	}
 
 	// should restart old container
-	err := dockerCli.ContainerStart(ctx, oldContainerId, container.StartOptions{})
-	if err != nil {
+	if err := dockerCli.ContainerStart(ctx, oldContainerId, container.StartOptions{}); err != nil {
 		log.Err(err).
 			Str("containerId", oldContainerId).
 			Msg("Unable to restart container, please restart it manually")
 	}
 
-	log.Info().
-		Msg("Successfully restarted old container and cleaned up temporary container")
+	log.Info().Msg("Successfully restarted old container and cleaned up temporary container")
 
 	return errUpdateFailure
 }
@@ -200,7 +188,7 @@ func buildContainerName(containerName string) string {
 		return before
 	}
 
-	return fmt.Sprintf("%s-update", containerName)
+	return containerName + "-update"
 }
 
 func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) (bool, error) {
@@ -213,27 +201,28 @@ func pullImage(ctx context.Context, dockerCli *client.Client, imageName string) 
 		return false, fmt.Errorf("unable to make image pull options: %w", err)
 	}
 
-	log.Debug().
-		Str("image", imageName).
-		Msg("Pulling Docker image")
+	log.Debug().Str("image", imageName).Msg("Pulling Docker image")
 
 	reader, err := dockerCli.ImagePull(ctx, imageName, imagePullOptions)
 	if err != nil {
-		log.Err(err).
-			Str("image", imageName).
-			Msg("Unable to pull image")
+		log.Err(err).Str("image", imageName).Msg("Unable to pull image")
 
 		return false, errUpdateFailure
 	}
-	defer reader.Close()
+	defer logs.CloseAndLogErr(reader)
 
 	// We have to read the output of the ImagePull command - otherwise it will be done asynchronously
 	// This is not really well documented on the Docker SDK
 	var imagePullOutputBuf bytes.Buffer
 	tee := io.TeeReader(reader, &imagePullOutputBuf)
 
-	io.Copy(os.Stdout, tee)
-	io.Copy(&imagePullOutputBuf, reader)
+	if _, err := io.Copy(os.Stdout, tee); err != nil {
+		return false, err
+	}
+
+	if _, err := io.Copy(&imagePullOutputBuf, reader); err != nil {
+		return false, err
+	}
 
 	// TODO: REVIEW
 	// There might be a cleaner way to check whether the container is using the same image as the one available locally
@@ -458,13 +447,11 @@ func printLogsToStdout(ctx context.Context, dockerCli client.APIClient, containe
 		return
 	}
 
-	defer reader.Close()
+	defer logs.CloseAndLogErr(reader)
 
-	_, err = io.Copy(os.Stdout, reader)
-	if err != nil {
+	if _, err := io.Copy(os.Stdout, reader); err != nil {
 		log.Error().Err(err).Msg("Unable to print container logs")
 	}
-
 }
 
 func execRollbackDB(ctx context.Context, dockerCli client.APIClient, oldContainerID, newContainerID string, timeout time.Duration) error {
@@ -478,7 +465,7 @@ func execRollbackDB(ctx context.Context, dockerCli client.APIClient, oldContaine
 		return fmt.Errorf("unable to inspect container %s: %w", oldContainerID, err)
 	}
 
-	rollbackContainerID, err := createContainer(ctx, dockerCli, containerJSON.Image, fmt.Sprintf("%s-rollback", oldContainerID), containerJSON, func(config *container.Config) {
+	rollbackContainerID, err := createContainer(ctx, dockerCli, containerJSON.Image, oldContainerID+"-rollback", containerJSON, func(config *container.Config) {
 		config.Cmd = []string{"/portainer", "--force-rollback"}
 		config.Entrypoint = []string{}
 	})
