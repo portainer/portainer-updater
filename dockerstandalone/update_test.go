@@ -15,6 +15,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/portainer/portainer-updater/logs"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -497,7 +498,7 @@ func TestUpdate_monitorAgentHealthMissingBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create Docker client: %v", err)
 	}
-	defer dockerCli.Close()
+	defer logs.CloseAndLogErr(dockerCli)
 
 	response := setUpTestContainer(t, ctx, dockerCli)
 

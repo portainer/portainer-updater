@@ -242,7 +242,7 @@ func updateDeployment(ctx context.Context, deployCli appsV1Client.DeploymentInte
 
 func waitForDeployment(ctx context.Context, deployCli appsV1Client.DeploymentInterface, deploymentName string, uid types.UID, timeoutSeconds *int64) error {
 	watcher, err := deployCli.Watch(ctx, metaV1.ListOptions{
-		FieldSelector:  fmt.Sprintf("metadata.name=%s", deploymentName),
+		FieldSelector:  "metadata.name=" + deploymentName,
 		TimeoutSeconds: timeoutSeconds,
 	})
 	if err != nil {
@@ -445,7 +445,7 @@ func awaitRollbackJob(ctx context.Context, jobCli batchV1Client.JobInterface, jo
 	timeoutSeconds := int64(timeout.Seconds())
 
 	watcher, err := jobCli.Watch(ctx, metaV1.ListOptions{
-		FieldSelector:  fmt.Sprintf("metadata.name=%s", job.Name),
+		FieldSelector:  "metadata.name=" + job.Name,
 		TimeoutSeconds: &timeoutSeconds,
 	})
 	if err != nil {

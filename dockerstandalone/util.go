@@ -22,7 +22,7 @@ func UpdateEnv(env []string, scheduleId string) []string {
 		return strings.HasPrefix(envVar, "UPDATE_ID=")
 	})
 
-	scheduleEnv := fmt.Sprintf("UPDATE_ID=%s", scheduleId)
+	scheduleEnv := "UPDATE_ID=" + scheduleId
 	if foundIndex != -1 {
 		env[foundIndex] = scheduleEnv
 

@@ -2,7 +2,6 @@ package dockerstandalone
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,10 @@ import (
 func TestHealthy(t *testing.T) {
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	require.NoError(t, err, "failed to create docker client")
-	defer dockerCli.Close()
+	defer func() {
+		err := dockerCli.Close()
+		require.NoError(t, err)
+	}()
 
 	response := setUpTestContainer(t, t.Context(), dockerCli)
 
@@ -31,8 +34,8 @@ func TestHealthy(t *testing.T) {
 }
 
 func TestIsUnknownFlagError(t *testing.T) {
-	assert.True(t, isUnknownFlagError(fmt.Errorf("unknown long flag '--health-check'")))
-	assert.False(t, isUnknownFlagError(fmt.Errorf("error")))
+	assert.True(t, isUnknownFlagError(errors.New("unknown long flag '--health-check'")))
+	assert.False(t, isUnknownFlagError(errors.New("error")))
 	assert.False(t, isUnknownFlagError(nil))
 }
 

@@ -5,7 +5,7 @@ import (
 
 	"github.com/alecthomas/kong"
 	"github.com/portainer/portainer-updater/cli"
-	"github.com/portainer/portainer-updater/log"
+	"github.com/portainer/portainer-updater/logs"
 )
 
 func main() {
@@ -18,8 +18,8 @@ func main() {
 			Summary: true,
 		}))
 
-	log.ConfigureLogger(cli.CLI.PrettyLog)
-	log.SetLoggingLevel(cli.CLI.LogLevel)
+	logs.ConfigureLogger(cli.CLI.PrettyLog)
+	logs.SetLoggingLevel(cli.CLI.LogLevel)
 
 	err := cliCtx.Run()
 	if err != nil {

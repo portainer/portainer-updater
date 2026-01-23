@@ -1,6 +1,7 @@
-package log
+package logs
 
 import (
+	"io"
 	stdlog "log"
 	"os"
 
@@ -50,5 +51,11 @@ func SetLoggingLevel(level Level) {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	case LevelDebug:
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
+}
+
+func CloseAndLogErr(c io.Closer) {
+	if err := c.Close(); err != nil {
+		log.Error().Err(err).Msg("failure to close resource")
 	}
 }

@@ -2,6 +2,7 @@ package dockerswarm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,7 +21,7 @@ func Scale(ctx context.Context, dockerClient client.APIClient, serviceID string,
 	}
 
 	if service.Spec.Mode.Replicated == nil || service.Spec.Mode.Replicated.Replicas == nil {
-		return fmt.Errorf("service is not in replicated mode")
+		return errors.New("service is not in replicated mode")
 	}
 
 	if *service.Spec.Mode.Replicated.Replicas == replicas {

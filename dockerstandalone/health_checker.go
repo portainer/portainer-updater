@@ -105,7 +105,7 @@ func execInContainer(ctx context.Context, cli *client.Client, containerID string
 		time.Sleep(time.Second)
 	}
 
-	return fmt.Errorf("exec command timed out")
+	return errors.New("exec command timed out")
 }
 
 func isProcessFailedToStart(err error) bool {

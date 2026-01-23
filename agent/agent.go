@@ -5,6 +5,7 @@ import (
 
 	"github.com/portainer/portainer-updater/dockerstandalone"
 	"github.com/portainer/portainer-updater/dockerswarm"
+	"github.com/portainer/portainer-updater/logs"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
@@ -43,7 +44,7 @@ func (r *AgentCommand) runDocker(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to create docker client")
 	}
-	defer dockerCli.Close()
+	defer logs.CloseAndLogErr(dockerCli)
 
 	dockerInfo, err := dockerCli.Info(context.Background())
 	if err != nil {

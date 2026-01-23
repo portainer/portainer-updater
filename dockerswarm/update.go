@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/portainer/portainer-updater/dockerstandalone"
+	"github.com/portainer/portainer-updater/logs"
 	"github.com/portainer/portainer-updater/utils"
 
 	"github.com/docker/docker/api/types"
@@ -181,15 +182,20 @@ func pullImage(ctx context.Context, dockerCli client.APIClient, imageName string
 
 		return false, errUpdateFailure
 	}
-	defer reader.Close()
+	defer logs.CloseAndLogErr(reader)
 
 	// We have to read the output of the ImagePull command - otherwise it will be done asynchronously
 	// This is not really well documented on the Docker SDK
 	var imagePullOutputBuf bytes.Buffer
 	tee := io.TeeReader(reader, &imagePullOutputBuf)
 
-	io.Copy(os.Stdout, tee)
-	io.Copy(&imagePullOutputBuf, reader)
+	if _, err := io.Copy(os.Stdout, tee); err != nil {
+		return false, err
+	}
+
+	if _, err := io.Copy(&imagePullOutputBuf, reader); err != nil {
+		return false, err
+	}
 
 	// TODO: REVIEW
 	// There might be a cleaner way to check whether the container is using the same image as the one available locally
