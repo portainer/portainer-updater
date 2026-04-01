@@ -22,7 +22,7 @@ func TestHealthy(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	response := setUpTestContainer(t, t.Context(), dockerCli)
+	response := setUpTestContainer(t, dockerCli)
 
 	t.Run("agentHealthy", func(t *testing.T) {
 		assert.ErrorIs(t, agentHealthy(t.Context(), dockerCli, response.ID), ErrBinaryNotFound, "should not contain healthy binary, thus should return ErrBinaryNotFound")
@@ -41,15 +41,15 @@ func TestIsUnknownFlagError(t *testing.T) {
 
 // setUpTestContainer creates a test container.
 // Note, the container is removed in the test cleanup.
-func setUpTestContainer(t *testing.T, ctx context.Context, dockerCli *client.Client) container.CreateResponse {
-	imgRd, err := dockerCli.ImagePull(ctx, "busybox:latest", image.PullOptions{})
+func setUpTestContainer(t *testing.T, dockerCli *client.Client) container.CreateResponse {
+	imgRd, err := dockerCli.ImagePull(t.Context(), "busybox:latest", image.PullOptions{})
 	require.NoError(t, err)
 
 	_, err = io.Copy(io.Discard, imgRd)
 	require.NoError(t, err)
 	require.NoError(t, imgRd.Close())
 
-	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
+	resp, err := dockerCli.ContainerCreate(t.Context(), &container.Config{
 		Image:      "busybox:latest",
 		Cmd:        []string{"tail", "-f", "/dev/null"},
 		StopSignal: "SIGKILL",
@@ -59,27 +59,27 @@ func setUpTestContainer(t *testing.T, ctx context.Context, dockerCli *client.Cli
 	t.Cleanup(func() {
 		timeout := 5
 		// These operations are sensitive to context cancellation, so we use context.WithoutCancel.
-		_ = dockerCli.ContainerStop(context.WithoutCancel(ctx), resp.ID, container.StopOptions{Timeout: &timeout})
-		_ = dockerCli.ContainerRemove(context.WithoutCancel(ctx), resp.ID, container.RemoveOptions{Force: true})
+		_ = dockerCli.ContainerStop(context.WithoutCancel(t.Context()), resp.ID, container.StopOptions{Timeout: &timeout})
+		_ = dockerCli.ContainerRemove(context.WithoutCancel(t.Context()), resp.ID, container.RemoveOptions{Force: true})
 	})
 
 	// Start container
-	err = dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	err = dockerCli.ContainerStart(t.Context(), resp.ID, container.StartOptions{})
 	require.NoError(t, err, "error when starting container")
 
 	require.Eventually(t, func() bool {
-		inspect, err := dockerCli.ContainerInspect(ctx, resp.ID)
+		inspect, err := dockerCli.ContainerInspect(t.Context(), resp.ID)
 		if err != nil || !inspect.State.Running {
 			return false
 		}
 
 		execConfig := container.ExecOptions{Cmd: []string{"true"}}
-		execResp, err := dockerCli.ContainerExecCreate(ctx, resp.ID, execConfig)
+		execResp, err := dockerCli.ContainerExecCreate(t.Context(), resp.ID, execConfig)
 		if err != nil {
 			return false
 		}
 
-		err = dockerCli.ContainerExecStart(ctx, execResp.ID, container.ExecStartOptions{})
+		err = dockerCli.ContainerExecStart(t.Context(), execResp.ID, container.ExecStartOptions{})
 
 		return err == nil
 

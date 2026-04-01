@@ -490,8 +490,6 @@ func TestMonitorExtendedHealth(t *testing.T) {
 }
 
 func TestUpdate_monitorAgentHealthMissingBinary(t *testing.T) {
-	ctx := context.Background()
-
 	assertLogs := withLogAssertions(t, "Agent health cannot be checked. Assuming health check passed.")
 
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -500,9 +498,9 @@ func TestUpdate_monitorAgentHealthMissingBinary(t *testing.T) {
 	}
 	defer logs.CloseAndLogErr(dockerCli)
 
-	response := setUpTestContainer(t, ctx, dockerCli)
+	response := setUpTestContainer(t, dockerCli)
 
-	ok, err := monitorAgentHealth(ctx, dockerCli, response.ID, false)
+	ok, err := monitorAgentHealth(t.Context(), dockerCli, response.ID, false)
 
 	require.NoError(t, err, "should not return error when the healthy binary is missing")
 	assert.True(t, ok, "should be true because the healthy binary is missing and the agent health is thereby assumed to be ok")
