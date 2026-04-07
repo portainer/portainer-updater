@@ -23,6 +23,7 @@ import (
 )
 
 func TestUpdateSameTag(t *testing.T) {
+	t.Parallel()
 	dockerClient := &mockDockerClient{}
 	withPullImage(dockerClient, nil, true)
 	swarmService := setUpSwarmService()
@@ -183,6 +184,7 @@ func TestPullImageSkipPull(t *testing.T) {
 }
 
 func TestPullImage(t *testing.T) {
+	t.Parallel()
 	dockerClient := &mockDockerClient{}
 	withPullImage(dockerClient, nil, false)
 
@@ -193,6 +195,7 @@ func TestPullImage(t *testing.T) {
 }
 
 func TestPullImageFail(t *testing.T) {
+	t.Parallel()
 	dockerClient := &mockDockerClient{}
 	withPullImage(dockerClient, errors.New("error pulling image"), false)
 

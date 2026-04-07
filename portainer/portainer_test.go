@@ -9,6 +9,7 @@ import (
 )
 
 func TestPortainerInvalidEnvType(t *testing.T) {
+	t.Parallel()
 	command := Command{
 		EnvType: "invalid-env-type",
 	}
@@ -19,6 +20,7 @@ func TestPortainerInvalidEnvType(t *testing.T) {
 }
 
 func TestCommand_Defaults(t *testing.T) {
+	t.Parallel()
 	var command Command
 	cli, err := kong.New(&command)
 	require.NoError(t, err)
@@ -33,6 +35,7 @@ func TestCommand_Defaults(t *testing.T) {
 }
 
 func TestCommandHealthCheckFlag(t *testing.T) {
+	t.Parallel()
 	var command Command
 	cli, err := kong.New(&command)
 	require.NoError(t, err)

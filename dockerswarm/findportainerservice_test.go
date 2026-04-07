@@ -12,6 +12,7 @@ import (
 )
 
 func TestFindPortainerService_Success(t *testing.T) {
+	t.Parallel()
 	updaterService := setUpService("portainer_updater", []string{"node.role == manager"})
 	updaterService.Spec.Labels = make(map[string]string)
 	updaterService.Spec.Labels["io.portainer.updater"] = "true"
@@ -33,6 +34,7 @@ func TestFindPortainerService_Success(t *testing.T) {
 }
 
 func TestFindPortainerService_NoServices(t *testing.T) {
+	t.Parallel()
 	client := &mockDockerClient{serviceList: []swarm.Service{}}
 
 	service, err := FindPortainerService(t.Context(), client)
@@ -42,6 +44,7 @@ func TestFindPortainerService_NoServices(t *testing.T) {
 }
 
 func TestFindPortainerService_NoManagerConstraint(t *testing.T) {
+	t.Parallel()
 	portainerService := setUpService("portainer", []string{})
 	client := &mockDockerClient{serviceList: []swarm.Service{
 		portainerService,
@@ -54,6 +57,7 @@ func TestFindPortainerService_NoManagerConstraint(t *testing.T) {
 }
 
 func TestFindPortainerService_ServiceListError(t *testing.T) {
+	t.Parallel()
 	expectedError := errors.New("service list error")
 	client := &mockDockerClient{
 		errServiceList: expectedError,

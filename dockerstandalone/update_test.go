@@ -102,6 +102,7 @@ func (c mockDockerClient) ContainerStop(ctx context.Context, containerID string,
 }
 
 func TestMonitorHealth(t *testing.T) {
+	t.Parallel()
 	t.Run("should return early if no healthcheck is set up", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			expectedContainerID := "test-container-id"
@@ -188,6 +189,7 @@ func TestMonitorHealth(t *testing.T) {
 }
 
 func TestCleanupContainerAndError(t *testing.T) {
+	t.Parallel()
 	mockClient := mockDockerClient{
 		t:                      t,
 		expectedOldContainerID: "mock-old-container-id",
@@ -442,6 +444,7 @@ func TestCleanupContainerAndError(t *testing.T) {
 }
 
 func TestMonitorExtendedHealth(t *testing.T) {
+	t.Parallel()
 	t.Run("failed to verify health", func(t *testing.T) {
 
 		testHealthCheck := func(ctx context.Context, cli *client.Client, containerID string) error {
@@ -490,6 +493,7 @@ func TestMonitorExtendedHealth(t *testing.T) {
 }
 
 func TestUpdate_monitorAgentHealthMissingBinary(t *testing.T) {
+	t.Parallel()
 	assertLogs := withLogAssertions(t, "Agent health cannot be checked. Assuming health check passed.")
 
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -508,6 +512,7 @@ func TestUpdate_monitorAgentHealthMissingBinary(t *testing.T) {
 }
 
 func TestBuildContainerName(t *testing.T) {
+	t.Parallel()
 	require.Equal(t, "x-update", buildContainerName("x"))
 	require.Equal(t, "x", buildContainerName("x-update"))
 }

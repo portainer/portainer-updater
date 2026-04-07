@@ -15,6 +15,7 @@ import (
 )
 
 func TestHealthy(t *testing.T) {
+	t.Parallel()
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	require.NoError(t, err, "failed to create docker client")
 	defer func() {
@@ -34,6 +35,7 @@ func TestHealthy(t *testing.T) {
 }
 
 func TestIsUnknownFlagError(t *testing.T) {
+	t.Parallel()
 	assert.True(t, isUnknownFlagError(errors.New("unknown long flag '--health-check'")))
 	assert.False(t, isUnknownFlagError(errors.New("error")))
 	assert.False(t, isUnknownFlagError(nil))

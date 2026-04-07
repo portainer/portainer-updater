@@ -3,6 +3,7 @@ package portainer
 import "testing"
 
 func TestValidateImageWithLicense(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		license string

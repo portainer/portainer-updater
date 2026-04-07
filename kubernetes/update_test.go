@@ -19,6 +19,7 @@ import (
 )
 
 func TestUpdate(t *testing.T) {
+	t.Parallel()
 	client := fake.NewSimpleClientset()
 
 	deployment := setUpDeployment()
@@ -134,6 +135,7 @@ func TestUpdateWithCustomRegistry(t *testing.T) {
 }
 
 func TestUpdateWithExtendedHealthCheckTimeout(t *testing.T) {
+	t.Parallel()
 	// This test asserts that the Update function returns errUpdateFailure
 	// if the deployment does not become ready within the extended timeout
 	// period when Portainer Auto Update is enabled.
@@ -175,6 +177,7 @@ func TestUpdateWithExtendedHealthCheckTimeout(t *testing.T) {
 }
 
 func TestCreateEnvVarPatch(t *testing.T) {
+	t.Parallel()
 	t.Run("No existing env vars", func(t *testing.T) {
 		patch := createEnvVarPatch("LICENSE123", nil)
 
@@ -206,6 +209,7 @@ func TestCreateEnvVarPatch(t *testing.T) {
 }
 
 func TestCreateImagePullSecretPatch(t *testing.T) {
+	t.Parallel()
 	t.Run("No secret name provided", func(t *testing.T) {
 		patch := createImagePullSecretPatch("", nil)
 		assert.Empty(t, patch)
