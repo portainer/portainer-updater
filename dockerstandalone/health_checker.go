@@ -7,7 +7,6 @@ import (
 	"io"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -23,12 +22,14 @@ type healthCheck func(ctx context.Context, cli *client.Client, containerID strin
 
 var agentHealthyBinary = func() string {
 	binary := "healthy"
+
 	// This does not ensure the binary is actually a Windows binary, but it relies on the high likelihood
 	// that if the updater is running on Windows, the container is also Windows-based.
 	// A more robust solution would be to inspect the agent container image OS.
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
+
 	return binary
 }()
 
@@ -55,15 +56,16 @@ func agentHealthy(ctx context.Context, cli *client.Client, containerID string) e
 }
 
 func healthyWithCmd(ctx context.Context, cli *client.Client, containerID string, cmd []string) error {
-	if err := execInContainer(ctx, cli, containerID, cmd); err != nil {
-		if isProcessFailedToStart(err) {
-			return ErrProcessFailedToStart
-		}
-
-		return err
+	err := execInContainer(ctx, cli, containerID, cmd)
+	if err == nil {
+		return nil
 	}
 
-	return nil
+	if isProcessFailedToStart(err) {
+		return ErrProcessFailedToStart
+	}
+
+	return err
 }
 
 func execInContainer(ctx context.Context, cli *client.Client, containerID string, cmd []string) error {
@@ -84,28 +86,22 @@ func execInContainer(ctx context.Context, cli *client.Client, containerID string
 	}
 	defer resp.Close()
 
-	// Wait for command to complete by polling inspect
-	for range 10 {
-		inspect, err := cli.ContainerExecInspect(ctx, execIDResp.ID)
-		if err != nil {
-			return fmt.Errorf("exec inspect failed: %w", err)
-		}
-		if !inspect.Running {
-			if inspect.ExitCode == 0 {
-				return nil
-			}
-			output, err := io.ReadAll(resp.Reader)
-			if err != nil {
-				return fmt.Errorf("reading exec output failed: %w", err)
-			}
-
-			return fmt.Errorf("command failed (%d): %s", inspect.ExitCode, string(output))
-		}
-
-		time.Sleep(time.Second)
+	// Read all the output so it blocks until the exec completes
+	output, err := io.ReadAll(resp.Reader)
+	if err != nil {
+		return fmt.Errorf("reading exec output failed: %w", err)
 	}
 
-	return errors.New("exec command timed out")
+	inspect, err := cli.ContainerExecInspect(ctx, execIDResp.ID)
+	if err != nil {
+		return fmt.Errorf("exec inspect failed: %w", err)
+	}
+
+	if inspect.ExitCode != 0 {
+		return fmt.Errorf("command failed (%d): %s", inspect.ExitCode, string(output))
+	}
+
+	return nil
 }
 
 func isProcessFailedToStart(err error) bool {

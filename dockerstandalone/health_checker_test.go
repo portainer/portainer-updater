@@ -34,6 +34,68 @@ func TestHealthy(t *testing.T) {
 	})
 }
 
+func TestExecInContainer_Success(t *testing.T) {
+	t.Parallel()
+	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	require.NoError(t, err)
+	defer func() {
+		err := dockerCli.Close()
+		require.NoError(t, err)
+	}()
+
+	response := setUpTestContainer(t, dockerCli)
+
+	err = execInContainer(t.Context(), dockerCli, response.ID, []string{"echo", "hello"})
+	require.NoError(t, err)
+}
+
+func TestExecInContainer_NonZeroExitCode(t *testing.T) {
+	t.Parallel()
+	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	require.NoError(t, err)
+	defer func() {
+		err := dockerCli.Close()
+		require.NoError(t, err)
+	}()
+
+	response := setUpTestContainer(t, dockerCli)
+
+	err = execInContainer(t.Context(), dockerCli, response.ID, []string{"sh", "-c", "exit 1"})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "command failed (1)")
+}
+
+func TestHealthyWithCmd_Success(t *testing.T) {
+	t.Parallel()
+	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	require.NoError(t, err)
+	defer func() {
+		err := dockerCli.Close()
+		require.NoError(t, err)
+	}()
+
+	response := setUpTestContainer(t, dockerCli)
+
+	err = healthyWithCmd(t.Context(), dockerCli, response.ID, []string{"echo", "hello"})
+	require.NoError(t, err)
+}
+
+func TestHealthyWithCmd_NonZeroExitCode(t *testing.T) {
+	t.Parallel()
+	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	require.NoError(t, err)
+	defer func() {
+		err := dockerCli.Close()
+		require.NoError(t, err)
+	}()
+
+	response := setUpTestContainer(t, dockerCli)
+
+	err = healthyWithCmd(t.Context(), dockerCli, response.ID, []string{"sh", "-c", "exit 1"})
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrProcessFailedToStart)
+}
+
 func TestIsUnknownFlagError(t *testing.T) {
 	t.Parallel()
 	assert.True(t, isUnknownFlagError(errors.New("unknown long flag '--health-check'")))
