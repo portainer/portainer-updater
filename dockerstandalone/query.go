@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 
+	"github.com/portainer/portainer-updater/logs"
+
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -84,15 +86,16 @@ func findByLogsFn(log string) queryFn {
 		}
 
 		for _, c := range containers {
-			logs, err := dockerCli.ContainerLogs(ctx, c.ID, container.LogsOptions{
+			r, err := dockerCli.ContainerLogs(ctx, c.ID, container.LogsOptions{
 				ShowStdout: true,
 				ShowStderr: true,
 			})
 			if err != nil {
 				return nil, errors.WithMessage(err, "unable to get container logs")
 			}
+			defer logs.CloseAndLogErr(r)
 
-			scanner := bufio.NewScanner(logs)
+			scanner := bufio.NewScanner(r)
 
 			for scanner.Scan() {
 				if strings.Contains(scanner.Text(), log) {
