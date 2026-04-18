@@ -20,7 +20,7 @@ import (
 
 func TestUpdate(t *testing.T) {
 	t.Parallel()
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 
 	deployment := setUpDeployment()
 	_, err := client.AppsV1().Deployments("portainer").Create(t.Context(), deployment, metaV1.CreateOptions{})
@@ -74,7 +74,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestUpdateWithCustomRegistry(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 
 	deployment := setUpDeployment()
 	_, err := client.AppsV1().Deployments(deployment.Namespace).Create(t.Context(), deployment, metaV1.CreateOptions{})
@@ -144,7 +144,7 @@ func TestUpdateWithExtendedHealthCheckTimeout(t *testing.T) {
 	// in the fake watch reactor and subsequently closing the watcher. Although not perfect, as the timeout
 	// is set in the Update function, this ensures we can assert timeout behaviour.
 
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	deployment := setUpDeployment()
 	_, err := client.AppsV1().Deployments("portainer").Create(t.Context(), deployment, metaV1.CreateOptions{})
 	require.NoError(t, err)

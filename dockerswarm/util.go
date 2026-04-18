@@ -3,7 +3,7 @@ package dockerswarm
 import (
 	"context"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
@@ -11,12 +11,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func findService(ctx context.Context, container *types.Container, dockerCli *client.Client) (*swarm.Service, error) {
-	serviceID := container.Labels["com.docker.swarm.service.id"]
+func findService(ctx context.Context, ctr *container.Summary, dockerCli *client.Client) (*swarm.Service, error) {
+	serviceID := ctr.Labels["com.docker.swarm.service.id"]
 	if serviceID == "" {
 		log.Debug().
-			Str("container", container.ID).
-			Interface("labels", container.Labels).
+			Str("container", ctr.ID).
+			Interface("labels", ctr.Labels).
 			Msg("Container is not part of a service")
 
 		return nil, errors.New("unable to find service name")
@@ -24,7 +24,7 @@ func findService(ctx context.Context, container *types.Container, dockerCli *cli
 
 	serviceFilters := filters.NewArgs()
 	serviceFilters.Add("id", serviceID)
-	services, err := dockerCli.ServiceList(ctx, types.ServiceListOptions{
+	services, err := dockerCli.ServiceList(ctx, swarm.ServiceListOptions{
 		Filters: serviceFilters,
 	})
 

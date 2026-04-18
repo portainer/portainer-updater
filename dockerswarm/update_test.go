@@ -11,7 +11,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
@@ -230,7 +229,7 @@ type mockDockerClient struct {
 	containerWaitErrChannel  <-chan error
 }
 
-func (c *mockDockerClient) ServiceUpdate(ctx context.Context, serviceID string, version swarm.Version, service swarm.ServiceSpec, options types.ServiceUpdateOptions) (swarm.ServiceUpdateResponse, error) {
+func (c *mockDockerClient) ServiceUpdate(ctx context.Context, serviceID string, version swarm.Version, service swarm.ServiceSpec, options swarm.ServiceUpdateOptions) (swarm.ServiceUpdateResponse, error) {
 	c.serviceVersion = version.Index + 1
 	// Only assert the service update if an assertion function is provided and the service version is less than 3
 	// If it's 3 or more, it means the service is going through a rollback, and the mock does not support that yet.
@@ -241,7 +240,7 @@ func (c *mockDockerClient) ServiceUpdate(ctx context.Context, serviceID string, 
 	return swarm.ServiceUpdateResponse{}, c.errServiceUpdate
 }
 
-func (c *mockDockerClient) TaskList(ctx context.Context, options types.TaskListOptions) ([]swarm.Task, error) {
+func (c *mockDockerClient) TaskList(ctx context.Context, options swarm.TaskListOptions) ([]swarm.Task, error) {
 	taskListCall := c.taskListCalls[0]
 	if len(c.taskListCalls) > 1 {
 		c.taskListCalls = c.taskListCalls[1:]
@@ -250,7 +249,7 @@ func (c *mockDockerClient) TaskList(ctx context.Context, options types.TaskListO
 	return taskListCall, nil
 }
 
-func (c *mockDockerClient) ServiceInspectWithRaw(ctx context.Context, serviceID string, options types.ServiceInspectOptions) (swarm.Service, []byte, error) {
+func (c *mockDockerClient) ServiceInspectWithRaw(ctx context.Context, serviceID string, options swarm.ServiceInspectOptions) (swarm.Service, []byte, error) {
 	statusUpdate := c.updateStates[0]
 	if len(c.updateStates) > 1 {
 		c.updateStates = c.updateStates[1:]

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
@@ -16,7 +15,7 @@ func FindPortainerService(ctx context.Context, dockerCli client.APIClient) (*swa
 	serviceFilters := filters.NewArgs()
 	serviceFilters.Add("name", "portainer")  // Assuming the service is named "portainer" in swarm
 	serviceFilters.Add("mode", "replicated") // Portainer should always be deployed as a replicated service
-	services, err := dockerCli.ServiceList(ctx, types.ServiceListOptions{
+	services, err := dockerCli.ServiceList(ctx, swarm.ServiceListOptions{
 		Filters: serviceFilters,
 	})
 

@@ -12,7 +12,7 @@ import (
 
 func TestFindPortainerDeployment(t *testing.T) {
 	t.Parallel()
-	cli := fake.NewSimpleClientset(
+	cli := fake.NewClientset(
 		setUpPortainerDeployment(),
 	)
 
@@ -25,7 +25,7 @@ func TestFindPortainerDeployment(t *testing.T) {
 
 func TestFindPortainerDeploymentNotFound(t *testing.T) {
 	t.Parallel()
-	cli := fake.NewSimpleClientset()
+	cli := fake.NewClientset()
 	_, err := FindPortainerDeployment(t.Context(), cli)
 
 	require.Error(t, err)
@@ -37,7 +37,7 @@ func TestFindPortainerDeploymentMultipleDeployments(t *testing.T) {
 	old := setUpPortainerDeployment()
 	old.Name = "portainer-old"
 
-	cli := fake.NewSimpleClientset(
+	cli := fake.NewClientset(
 		setUpPortainerDeployment(),
 		old,
 	)

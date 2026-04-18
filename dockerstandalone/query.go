@@ -7,14 +7,13 @@ import (
 
 	"github.com/portainer/portainer-updater/logs"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 )
 
-type queryFn = func(context.Context, *client.Client) (*types.Container, error)
+type queryFn = func(context.Context, *client.Client) (*container.Summary, error)
 
 type findContainerQuery struct {
 	fn   queryFn
@@ -22,7 +21,7 @@ type findContainerQuery struct {
 }
 
 func findByLabelFn(label string) queryFn {
-	return func(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
+	return func(ctx context.Context, dockerCli *client.Client) (*container.Summary, error) {
 		filters := filters.NewArgs()
 		filters.Add("status", "running")
 		filters.Add("label", label)
@@ -47,7 +46,7 @@ func findByLabelFn(label string) queryFn {
 }
 
 func findByImageFn(possibleImagePrefixes ...string) queryFn {
-	return func(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
+	return func(ctx context.Context, dockerCli *client.Client) (*container.Summary, error) {
 		filters := filters.NewArgs()
 		filters.Add("status", "running")
 
@@ -74,7 +73,7 @@ func findByImageFn(possibleImagePrefixes ...string) queryFn {
 
 func findByLogsFn(log string) queryFn {
 
-	return func(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
+	return func(ctx context.Context, dockerCli *client.Client) (*container.Summary, error) {
 		filters := filters.NewArgs()
 		filters.Add("status", "running")
 

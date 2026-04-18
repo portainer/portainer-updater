@@ -10,7 +10,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
@@ -31,7 +30,7 @@ type mockDockerClient struct {
 	expectedContainerRemoveErr   error
 	expectedContainerStartErr    error
 	expectedContainerLogsErr     error
-	expectedContainerInspectResp *types.ContainerJSON
+	expectedContainerInspectResp *container.InspectResponse
 	expectedContainerInspectErr  error
 
 	containerWaitErrChannel  <-chan error
@@ -64,7 +63,7 @@ func (c mockDockerClient) ContainerLogs(ctx context.Context, containerID string,
 	return io.NopCloser(bytes.NewReader([]byte("mock log"))), c.expectedContainerLogsErr
 }
 
-func (c mockDockerClient) ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error) {
+func (c mockDockerClient) ContainerInspect(ctx context.Context, containerID string) (container.InspectResponse, error) {
 	if c.expectInspectOldContainerID {
 		assert.Equal(c.t, c.expectedOldContainerID, containerID)
 	} else {
@@ -75,13 +74,13 @@ func (c mockDockerClient) ContainerInspect(ctx context.Context, containerID stri
 		return *c.expectedContainerInspectResp, c.expectedContainerInspectErr
 	}
 
-	return types.ContainerJSON{
-		ContainerJSONBase: &types.ContainerJSONBase{
+	return container.InspectResponse{
+		ContainerJSONBase: &container.ContainerJSONBase{
 			ID:   containerID,
 			Name: "test-container",
 		},
 		Config:          &container.Config{},
-		NetworkSettings: &types.NetworkSettings{},
+		NetworkSettings: &container.NetworkSettings{},
 	}, c.expectedContainerInspectErr
 }
 
@@ -109,11 +108,11 @@ func TestMonitorHealth(t *testing.T) {
 			mockClient := mockDockerClient{
 				t:                   t,
 				expectedContainerID: expectedContainerID,
-				expectedContainerInspectResp: &types.ContainerJSON{
-					ContainerJSONBase: &types.ContainerJSONBase{
+				expectedContainerInspectResp: &container.InspectResponse{
+					ContainerJSONBase: &container.ContainerJSONBase{
 						ID:    expectedContainerID,
 						Name:  "test-container",
-						State: &types.ContainerState{},
+						State: &container.State{},
 					},
 				},
 			}
@@ -133,13 +132,13 @@ func TestMonitorHealth(t *testing.T) {
 			mockClient := mockDockerClient{
 				t:                   t,
 				expectedContainerID: expectedContainerID,
-				expectedContainerInspectResp: &types.ContainerJSON{
-					ContainerJSONBase: &types.ContainerJSONBase{
+				expectedContainerInspectResp: &container.InspectResponse{
+					ContainerJSONBase: &container.ContainerJSONBase{
 						ID:   expectedContainerID,
 						Name: "test-container",
-						State: &types.ContainerState{
-							Health: &types.Health{
-								Status: types.Starting,
+						State: &container.State{
+							Health: &container.Health{
+								Status: container.Starting,
 							},
 						},
 					},
@@ -163,13 +162,13 @@ func TestMonitorHealth(t *testing.T) {
 			mockClient := mockDockerClient{
 				t:                   t,
 				expectedContainerID: expectedContainerID,
-				expectedContainerInspectResp: &types.ContainerJSON{
-					ContainerJSONBase: &types.ContainerJSONBase{
+				expectedContainerInspectResp: &container.InspectResponse{
+					ContainerJSONBase: &container.ContainerJSONBase{
 						ID:   expectedContainerID,
 						Name: "test-container",
-						State: &types.ContainerState{
-							Health: &types.Health{
-								Status: types.Unhealthy,
+						State: &container.State{
+							Health: &container.Health{
+								Status: container.Unhealthy,
 							},
 						},
 					},

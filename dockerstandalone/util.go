@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/segmentio/encoding/json"
@@ -43,13 +43,13 @@ func UpdateLabels(labels map[string]string, scheduleId string) map[string]string
 	return labels
 }
 
-func IsAsyncAgent(container types.ContainerJSON) bool {
-	if slices.Contains(container.Args, "--async-mode") {
+func IsAsyncAgent(c container.InspectResponse) bool {
+	if slices.Contains(c.Args, "--async-mode") {
 		return true
 	}
 
 	const edgeAsyncEnv = "EDGE_ASYNC="
-	for _, env := range container.Config.Env {
+	for _, env := range c.Config.Env {
 		if after, ok := strings.CutPrefix(env, edgeAsyncEnv); ok {
 			value := after
 			if value == "true" || value == "1" {

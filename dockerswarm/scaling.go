@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
@@ -15,7 +14,7 @@ import (
 )
 
 func Scale(ctx context.Context, dockerClient client.APIClient, serviceID string, replicas uint64, timeout time.Duration) error {
-	service, _, err := dockerClient.ServiceInspectWithRaw(ctx, serviceID, types.ServiceInspectOptions{})
+	service, _, err := dockerClient.ServiceInspectWithRaw(ctx, serviceID, swarm.ServiceInspectOptions{})
 	if err != nil {
 		return fmt.Errorf("could not inspect service: %w", err)
 	}
@@ -33,14 +32,14 @@ func Scale(ctx context.Context, dockerClient client.APIClient, serviceID string,
 
 	service.Spec.Mode.Replicated.Replicas = &replicas
 
-	if _, err := dockerClient.ServiceUpdate(ctx, service.ID, prevVersion, service.Spec, types.ServiceUpdateOptions{}); err != nil {
+	if _, err := dockerClient.ServiceUpdate(ctx, service.ID, prevVersion, service.Spec, swarm.ServiceUpdateOptions{}); err != nil {
 		return fmt.Errorf("could not update service: %w", err)
 	}
 
 	// When scaling replicas, the service update is considered complete when the desired number of tasks are running.
 	// There is no UpdateStatus like there is when performing a rolling update.
 	err = utils.WaitUntil(ctx, func() (bool, error) {
-		tasks, err := dockerClient.TaskList(ctx, types.TaskListOptions{
+		tasks, err := dockerClient.TaskList(ctx, swarm.TaskListOptions{
 			Filters: filters.NewArgs(
 				filters.Arg("service", service.ID),
 			),

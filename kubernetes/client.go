@@ -2,7 +2,8 @@ package kubernetes
 
 import (
 	"os"
-	"path/filepath"
+
+	"github.com/portainer/portainer/api/filesystem"
 
 	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes"
@@ -18,7 +19,7 @@ func GetClient() (*kubernetes.Clientset, error) {
 			return nil, errors.WithMessage(err, "failed to get kubernetes config")
 		}
 		// Fallback to local kubeconfig
-		kubeconfig := filepath.Join(homedir.HomeDir(), ".kube", "config")
+		kubeconfig := filesystem.JoinPaths(homedir.HomeDir(), ".kube", "config")
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 		if err != nil {
 			return nil, errors.WithMessage(err, "failed to get kubernetes config")

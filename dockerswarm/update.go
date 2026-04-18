@@ -13,7 +13,6 @@ import (
 	"github.com/portainer/portainer-updater/logs"
 	"github.com/portainer/portainer-updater/utils"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
@@ -96,7 +95,7 @@ func Update(ctx context.Context, dockerCli client.APIClient, imageName string, s
 		service.Spec.TaskTemplate.ContainerSpec.Healthcheck = nil
 	}
 
-	updateResponse, err := dockerCli.ServiceUpdate(ctx, service.ID, prevVersion, service.Spec, types.ServiceUpdateOptions{})
+	updateResponse, err := dockerCli.ServiceUpdate(ctx, service.ID, prevVersion, service.Spec, swarm.ServiceUpdateOptions{})
 	if err != nil {
 		return errors.WithMessage(err, "unable to update service")
 	}
@@ -113,7 +112,7 @@ func Update(ctx context.Context, dockerCli client.APIClient, imageName string, s
 			Str("serviceId", service.ID).
 			Msg("Waiting for service update to complete")
 
-		inspectService, _, err := dockerCli.ServiceInspectWithRaw(ctx, service.ID, types.ServiceInspectOptions{})
+		inspectService, _, err := dockerCli.ServiceInspectWithRaw(ctx, service.ID, swarm.ServiceInspectOptions{})
 		if err != nil {
 			log.Err(err).
 				Str("serviceId", service.ID).

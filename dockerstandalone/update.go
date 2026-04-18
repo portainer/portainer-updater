@@ -12,7 +12,6 @@ import (
 
 	"github.com/portainer/portainer-updater/logs"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
@@ -353,19 +352,19 @@ func monitorHealth(ctx context.Context, dockerCli client.APIClient, containerId 
 	// wait for healthcheck to be available or for the container to be stopped in case of error
 	time.Sleep(15 * time.Second)
 
-	container, err := dockerCli.ContainerInspect(ctx, containerId)
+	resp, err := dockerCli.ContainerInspect(ctx, containerId)
 	if err != nil {
 		return false, pkgerrors.WithMessage(err, "Unable to inspect new container")
 	}
 
-	if container.State.Health == nil {
-		if container.State.Status == "exited" {
+	if resp.State.Health == nil {
+		if resp.State.Status == "exited" {
 			return false, pkgerrors.New("Container exited unexpectedly")
 		}
 
 		log.Info().
 			Str("containerId", containerId).
-			Str("status", container.State.Status).
+			Str("status", resp.State.Status).
 			Msg("No health check found for the container. Assuming health check passed.")
 
 		return true, nil
@@ -373,14 +372,14 @@ func monitorHealth(ctx context.Context, dockerCli client.APIClient, containerId 
 
 	tries := 5
 	for range tries {
-		if container.State.Health.Status == types.Healthy {
+		if resp.State.Health.Status == container.Healthy {
 			return true, nil
 		}
 
-		if container.State.Health.Status == types.Unhealthy {
+		if resp.State.Health.Status == container.Unhealthy {
 			log.Error().
-				Str("Status", container.State.Health.Status).
-				Interface("Logs", container.State.Health.Log).
+				Str("Status", resp.State.Health.Status).
+				Interface("Logs", resp.State.Health.Log).
 				Msg("Health check failed. Exiting without updating the container")
 
 			return false, nil
@@ -388,26 +387,26 @@ func monitorHealth(ctx context.Context, dockerCli client.APIClient, containerId 
 
 		log.Debug().
 			Str("containerId", containerId).
-			Str("status", container.State.Health.Status).
+			Str("status", resp.State.Health.Status).
 			Msg("Container health check in progress")
 
 		time.Sleep(5 * time.Second)
-		container, err = dockerCli.ContainerInspect(ctx, containerId)
+		resp, err = dockerCli.ContainerInspect(ctx, containerId)
 		if err != nil {
 			return false, pkgerrors.WithMessage(err, "Unable to inspect new container")
 		}
 	}
 
 	log.Error().
-		Str("status", container.State.Health.Status).
-		Interface("logs", container.State.Health.Log).
+		Str("status", resp.State.Health.Status).
+		Interface("logs", resp.State.Health.Log).
 		Msg("Health check timed out. Exiting without updating the container")
 
 	return false, nil
 
 }
 
-func createContainer(ctx context.Context, dockerCli client.APIClient, imageName, tempContainerName string, oldContainer types.ContainerJSON, updateConfig func(*container.Config)) (string, error) {
+func createContainer(ctx context.Context, dockerCli client.APIClient, imageName, tempContainerName string, oldContainer container.InspectResponse, updateConfig func(*container.Config)) (string, error) {
 	log.Debug().
 		Str("containerName", tempContainerName).
 		Str("image", imageName).

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,7 +68,7 @@ func TestFindPortainerService_ServiceListError(t *testing.T) {
 	require.ErrorIs(t, err, expectedError)
 }
 
-func (c *mockDockerClient) ServiceList(ctx context.Context, opts types.ServiceListOptions) ([]swarm.Service, error) {
+func (c *mockDockerClient) ServiceList(ctx context.Context, opts swarm.ServiceListOptions) ([]swarm.Service, error) {
 	return c.serviceList, c.errServiceList
 }
 

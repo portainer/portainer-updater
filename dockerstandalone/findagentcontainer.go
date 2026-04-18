@@ -3,13 +3,13 @@ package dockerstandalone
 import (
 	"context"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
 
-func FindAgentContainer(ctx context.Context, dockerCli *client.Client) (*types.Container, error) {
+func FindAgentContainer(ctx context.Context, dockerCli *client.Client) (*container.Summary, error) {
 	queries := []findContainerQuery{
 		{findByLabelFn("io.portainer.agent=true"), "findByLabel"},
 		{findByImageFn("portainer/agent", "portainerci/agent"), "findByImage"},
