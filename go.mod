@@ -1,6 +1,6 @@
 module github.com/portainer/portainer-updater
 
-go 1.26.2
+go 1.26.3
 
 replace github.com/portainer/portainer => ../../../package/server-ce
 
