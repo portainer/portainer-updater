@@ -5,7 +5,7 @@ go 1.26.4
 replace github.com/portainer/portainer => ../../../package/server-ce
 
 require (
-	github.com/Masterminds/semver v1.5.0
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alecthomas/kong v1.8.1
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/opencontainers/image-spec v1.1.1

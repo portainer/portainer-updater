@@ -53,6 +53,14 @@ linters:
               desc: github.com/cosi-project/runtime is not allowed because of FIPS mode
             - pkg: gopkg.in/yaml.v3
               desc: use go.yaml.in/yaml/v3 instead
+            - pkg: github.com/Masterminds/semver$
+              desc: use github.com/Masterminds/semver/v3
+            - pkg: github.com/blang/semver
+              desc: use github.com/Masterminds/semver/v3
+            - pkg: github.com/coreos/go-semver
+              desc: use github.com/Masterminds/semver/v3
+            - pkg: github.com/hashicorp/go-version
+              desc: use github.com/Masterminds/semver/v3
     forbidigo:
       forbid:
         - pattern: ^tls\.Config$
