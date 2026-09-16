@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -17,6 +18,16 @@ var (
 	ErrBinaryNotFound       = errors.New(`"healthy" binary not found in container`)
 	ErrProcessFailedToStart = errors.New("process failed to start in container")
 	ErrFlagNotSupported     = errors.New("--health-check flag not supported in this container")
+)
+
+const (
+	// execTimeout bounds how long we wait for a health-check command to finish
+	// inside the container.
+	execTimeout = 10 * time.Second
+
+	// exitCodeCannotExecute is the conventional exit code for a command that was
+	// found but could not be executed, i.e. the process never started.
+	exitCodeCannotExecute = 126
 )
 
 type healthCheck func(ctx context.Context, cli *client.Client, containerID string) error
@@ -84,28 +95,45 @@ func execInContainer(ctx context.Context, cli *client.Client, containerID string
 	}
 	defer resp.Close()
 
-	// Wait for command to complete by polling inspect
-	for range 10 {
-		inspect, err := cli.ContainerExecInspect(ctx, execIDResp.ID)
-		if err != nil {
-			return fmt.Errorf("exec inspect failed: %w", err)
-		}
-		if !inspect.Running {
-			if inspect.ExitCode == 0 {
-				return nil
-			}
-			output, err := io.ReadAll(resp.Reader)
-			if err != nil {
-				return fmt.Errorf("reading exec output failed: %w", err)
-			}
-
-			return fmt.Errorf("command failed (%d): %s", inspect.ExitCode, string(output))
-		}
-
-		time.Sleep(time.Second)
+	// The hijacked stream closes once the exec has finished, or has failed to
+	// start, so draining it is the authoritative completion signal.
+	//
+	// Do not poll ContainerExecInspect to decide this. An exec the daemon has
+	// accepted but not yet started reports Running=false with ExitCode=0, which
+	// is indistinguishable from a clean success, so inspecting first could
+	// report a command that never ran as healthy and skip a rollback.
+	if err := resp.Conn.SetReadDeadline(time.Now().Add(execTimeout)); err != nil {
+		return fmt.Errorf("setting exec read deadline failed: %w", err)
 	}
 
-	return errors.New("exec command timed out")
+	output, err := io.ReadAll(resp.Reader)
+	if err != nil {
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			return errors.New("exec command timed out")
+		}
+
+		return fmt.Errorf("reading exec output failed: %w", err)
+	}
+
+	inspect, err := cli.ContainerExecInspect(ctx, execIDResp.ID)
+	if err != nil {
+		return fmt.Errorf("exec inspect failed: %w", err)
+	}
+
+	if inspect.Running {
+		return errors.New("exec command timed out")
+	}
+
+	if inspect.ExitCode != 0 {
+		err := fmt.Errorf("command failed (%d): %s", inspect.ExitCode, string(output))
+		if inspect.ExitCode == exitCodeCannotExecute {
+			return errors.Join(err, ErrProcessFailedToStart)
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func isProcessFailedToStart(err error) bool {
