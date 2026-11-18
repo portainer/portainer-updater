@@ -12,6 +12,7 @@ import (
 	appV1 "k8s.io/api/apps/v1"
 	batchV1 "k8s.io/api/batch/v1"
 	coreV1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -27,7 +28,10 @@ type (
 	}
 )
 
-var errUpdateFailure = errors.New("update failure")
+var (
+	errUpdateFailure   = errors.New("update failure")
+	errNothingToUpdate = errors.New("nothing to update")
+)
 
 type UpdateOptions struct {
 	ExtendedHealthCheck bool
@@ -74,6 +78,15 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 		return nil
 	}
 
+	if errors.Is(err, errNothingToUpdate) {
+		log.Err(err).
+			Str("deploymentName", deployment.Name).
+			Str("image", imageName).
+			Msg("Deployment is unchanged by the update, skipping rollback")
+
+		return err
+	}
+
 	log.Err(err).
 		Str("deploymentName", deployment.Name).
 		Msg("Unable to update deployment")
@@ -94,7 +107,7 @@ func Update(ctx context.Context, cli kubernetes.Interface, imageName string, dep
 		}
 	}
 
-	if err := updateDeployment(ctx, deployCli, deployment.Name, originalImage, patch, &defaultTimeout); err != nil {
+	if err := updateDeployment(ctx, deployCli, deployment.Name, originalImage, patch, &defaultTimeout); err != nil && !errors.Is(err, errNothingToUpdate) {
 		log.Err(err).
 			Str("deploymentName", deployment.Name).
 			Msg("Unable to rollback deployment")
@@ -227,10 +240,20 @@ func updateDeployment(ctx context.Context, deployCli appsV1Client.DeploymentInte
 		return errors.WithMessage(err, "unable to marshal patch")
 	}
 
+	currentDeployment, err := deployCli.Get(ctx, deploymentName, metaV1.GetOptions{})
+	if err != nil {
+		return errors.WithMessage(err, "unable to get deployment")
+	}
+
 	newDeployment, err := deployCli.
 		Patch(ctx, deploymentName, types.JSONPatchType, patchBytes, metaV1.PatchOptions{})
 	if err != nil {
 		return errors.WithMessage(err, "unable to patch deployment")
+	}
+
+	// An unchanged pod template means no rollout starts, so waiting would report success without updating anything.
+	if apiequality.Semantic.DeepEqual(currentDeployment.Spec.Template, newDeployment.Spec.Template) {
+		return fmt.Errorf("portainer is already running %s, so there is %w", imageName, errNothingToUpdate)
 	}
 
 	log.Debug().

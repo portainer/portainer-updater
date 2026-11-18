@@ -176,6 +176,32 @@ func TestUpdateWithExtendedHealthCheckTimeout(t *testing.T) {
 	})
 }
 
+func TestUpdateFailsWhenDeploymentAlreadyUsesImage(t *testing.T) {
+	t.Parallel()
+	client := fake.NewClientset()
+
+	deployment := setUpDeployment()
+	deployment.Spec.Template.Spec.Containers[0].Image = "portainer/portainer-ee:latest"
+	_, err := client.AppsV1().Deployments("portainer").Create(t.Context(), deployment, metaV1.CreateOptions{})
+	require.NoError(t, err)
+
+	err = Update(t.Context(), client, "portainer/portainer-ee:latest", deployment, "", UpdateOptions{})
+	require.ErrorIs(t, err, errNothingToUpdate)
+	require.EqualError(t, err, "portainer is already running portainer/portainer-ee:latest, so there is nothing to update")
+
+	for _, action := range client.Actions() {
+		assert.NotEqual(t, "watch", action.GetVerb(), "must not wait for a rollout that never starts")
+	}
+
+	patches := 0
+	for _, action := range client.Actions() {
+		if action.GetVerb() == "patch" {
+			patches++
+		}
+	}
+	assert.Equal(t, 1, patches, "must not patch again to roll back")
+}
+
 func TestCreateEnvVarPatch(t *testing.T) {
 	t.Parallel()
 	t.Run("No existing env vars", func(t *testing.T) {
